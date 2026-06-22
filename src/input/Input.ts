@@ -85,17 +85,6 @@ export class Input {
     return null;
   }
 
-  /**
-   * What consumeNext would return right now, WITHOUT removing it. Used by the
-   * responsive-turn flush to decide whether to apply input immediately.
-   */
-  peekApplied(heading: Direction): Direction | null {
-    for (const d of this.queue) {
-      if (d !== opposite(heading)) return d;
-    }
-    return null;
-  }
-
   consumePhase(): boolean {
     const r = this.phaseRequested;
     this.phaseRequested = false;

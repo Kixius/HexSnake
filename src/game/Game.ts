@@ -110,22 +110,6 @@ export class Game {
       guard++;
       if (this.state !== State.Playing) break;
     }
-
-    // Responsive input: if a direction change (or launch press) is waiting,
-    // finish the current step NOW instead of waiting for the next tick
-    // boundary. Only ACTUAL turns are pulled forward (next !== heading), so
-    // straight-line speed is unchanged and holding a key can't speed you up.
-    if (this.state === State.Playing && this.snake) {
-      const next = this.input.peekApplied(this.snake.heading);
-      const wantFlush = this.snake.started
-        ? next !== null && next !== this.snake.heading && this.accumulator > 0
-        : next !== null;
-      if (wantFlush) {
-        this.update(now);
-        this.accumulator = 0; // this step was pulled forward; reset the glide
-      }
-    }
-
     const alpha = dt > 0 ? this.accumulator / dt : 0;
     this.renderFrame(now, alpha);
     requestAnimationFrame(this.loop);
@@ -140,17 +124,17 @@ export class Game {
 
     if (this.input.consumePhase()) snake.activatePhase(this.snap, now);
 
-    // Launch: consume the first legal direction and move on the SAME tick
-    // (no extra tick of startup delay). No-reverse still applies.
-    let candidate: Direction | null;
     if (!snake.started) {
-      candidate = this.input.consumeNext(snake.heading);
-      if (candidate === null) return; // waiting for first input
-      snake.started = true;
-    } else {
-      candidate = this.input.consumeNext(snake.heading);
+      // Respect no-reverse even at launch (can't reverse into your own body).
+      const d = this.input.consumeNext(snake.heading);
+      if (d !== null) {
+        snake.heading = d;
+        snake.started = true;
+      }
+      return;
     }
 
+    const candidate = this.input.consumeNext(snake.heading);
     const res = snake.step(floor.grid, floor.obstacles, this.snap, now, this.tickDt(), candidate);
 
     if (res.ateEssence) {
