@@ -1,0 +1,19 @@
+{
+  "name": "hexsnake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Snake on a hexagonal grid with roguelike progression.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.0",
+    "puppeteer-core": "^25.2.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
