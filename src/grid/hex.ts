@@ -57,7 +57,8 @@ export function dir(i: number): Hex {
 }
 
 export function opposite(i: number): number {
-  return ((i % NUM_DIRS) + NUM_DIRS) % NUM_DIRS;
+  // The opposite direction is 3 steps away (180°) on a 6-direction hex.
+  return ((((i + 3) % NUM_DIRS) + NUM_DIRS) % NUM_DIRS);
 }
 
 export function add(a: Hex, b: Hex): Hex {
