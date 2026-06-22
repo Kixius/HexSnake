@@ -61,6 +61,13 @@ logic tick; `render(alpha)` lerps each segment between `prevSegments` and `segme
 (`CONFIG.maxFrameMs`); sim pauses on `document.hidden` and `P`. `GameManager` sets the
 DPR transform each frame before drawing — `Renderer.render` must **not** reset it.
 
+**Responsive input flush.** Because latency is otherwise locked to the (slow) tick
+interval, `GameManager.loop` runs an extra `update()` immediately when a direction
+*change* is waiting (`Input.peekApplied` returns a dir ≠ current heading), instead of
+waiting for the next tick boundary. Only actual turns are pulled forward — straight-line
+speed is unchanged and holding a key can't speed the snake up (each flushed step resets
+the accumulator). Launch likewise moves on the first tick rather than the second.
+
 **Upgrade seam — `GameSnapshot`** (`src/upgrades/snapshot.ts`): a single shared struct
 of tunables owned by GameManager. `UpgradeSystem.apply()` is the *only* writer;
 `SnakeController`, `Renderer`, and `Hud` read it each tick. **Never** scatter
