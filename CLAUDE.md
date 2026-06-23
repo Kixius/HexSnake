@@ -19,7 +19,14 @@ npm run build      # tsc --noEmit (typecheck) then vite build -> dist/
 npm run preview    # serve the production build
 npm run typecheck  # tsc --noEmit only
 node scripts/smoke.mjs   # headless smoke test (needs `npm run dev` running)
+npm run tauri dev    # desktop dev window: Vite + Tauri shell (needs Rust + MSVC Build Tools)
+npm run tauri build  # build the Windows app -> src-tauri/target/release/{app.exe, bundle/nsis/*.exe}
 ```
+
+**Desktop build:** `npm run tauri build` wraps the Vite output as a Windows app via Tauri 2
+(`src-tauri/`). It needs the Rust toolchain + MSVC C++ Build Tools installed. The web and
+desktop builds share **identical game code** — only `vite.config.ts` (`base: './'`, pinned
+dev port) and `src-tauri/tauri.conf.json` are desktop-specific; never fork game logic for it.
 
 `tsconfig.json` uses `"strict": true` and `"noUncheckedIndexedAccess": true`. The latter
 makes array indexing (e.g. `DIRS[i]`, `segments[0]`) type as `T | undefined` — use the

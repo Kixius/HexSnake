@@ -21,6 +21,26 @@ npm run preview   # serve the production build
 npm run typecheck # tsc --noEmit only
 ```
 
+## Desktop build (Windows `.exe`)
+
+The browser game is also wrapped as a native Windows desktop app via [Tauri 2](https://tauri.app)
+— a small Rust shell around the Vite build. **No game logic is duplicated**; the web and
+desktop builds share identical code.
+
+```bash
+npm run tauri build   # build the Windows app (needs Rust + MSVC Build Tools installed)
+```
+
+This produces, under `src-tauri/target/release/`:
+
+- `app.exe` — standalone executable (just run it)
+- `bundle/nsis/HexSnake_<version>_x64-setup.exe` — installer (auto-fetches WebView2 if absent)
+
+`npm run tauri dev` opens the game in a desktop window over the Vite dev server for live
+iteration. **One-time prerequisites:** the [Rust toolchain](https://rustup.rs) and the MSVC
+C++ Build Tools ("Desktop development with C++" workload). Open a new terminal after
+installing Rust so `cargo` is on PATH.
+
 ## Controls
 
 The flat-top hex grid mirrors the keyboard: the **top row** keys steer into the
