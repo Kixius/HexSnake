@@ -274,7 +274,7 @@ export class Renderer {
       const x = a.x + (b.x - a.x) * phase;
       const y = a.y + (b.y - a.y) * phase;
       ctx.save();
-      ctx.shadowColor = 'rgba(249,115,22,0.5)';
+      ctx.shadowColor = PALETTE.obstacleGlow;
       ctx.shadowBlur = 12;
       paintHex(ctx, x, y, s * 0.9, PALETTE.obstacle, PALETTE.obstacleEdge, 2);
       ctx.restore();
@@ -323,7 +323,7 @@ export class Renderer {
       const b = this.toScreen(head);
       const x = a.x + (b.x - a.x) * rs.alpha;
       const y = a.y + (b.y - a.y) * rs.alpha;
-      ctx.shadowColor = 'rgba(94,234,212,0.55)';
+      ctx.shadowColor = PALETTE.headGlow;
       ctx.shadowBlur = phasing ? 22 : 12;
       paintHex(ctx, x, y, s * 0.92, PALETTE.snakeHead, PALETTE.snakeOutline, 2);
       ctx.shadowBlur = 0;
@@ -345,7 +345,7 @@ export class Renderer {
     for (const sign of [-1, 1]) {
       const ex = x + fx * fwd + px * side * sign;
       const ey = y + fy * fwd + py * side * sign;
-      paintCircle(ctx, ex, ey, s * 0.12, '#0e1116');
+      paintCircle(ctx, ex, ey, s * 0.12, PALETTE.bg);
       paintCircle(ctx, ex + fx * s * 0.04, ey + fy * s * 0.04, s * 0.05, PALETTE.text);
     }
   }

@@ -47,7 +47,57 @@ export const CONFIG = {
   margin: 28,
 } as const;
 
-export const PALETTE = {
+/**
+ * Color palette. Typed as a mutable `Palette` interface (not `as const`) so
+ * themes can swap it at runtime: `theme.ts` does `Object.assign(PALETTE, preset)`,
+ * and because every reader accesses `PALETTE.x` live at draw time, the next frame
+ * reflects the new colors with zero call-site edits. Add new keys here AND to every
+ * preset in `theme.ts`.
+ */
+export interface Palette {
+  bg: string;
+  grid: string;
+  gridEdge: string;
+  arenaEdge: string;
+
+  snakeHead: string;
+  snakeBody: string;
+  snakeBodyBright: string;
+  snakeOutline: string;
+  acid: string;
+  /** Glow color used behind the snake head. */
+  headGlow: string;
+
+  essence: string;
+  essenceGlow: string;
+
+  portal: string;
+  portalBright: string;
+  portalGlow: string;
+
+  wall: string;
+  wallEdge: string;
+
+  slime: string;
+  slimeEdge: string;
+
+  obstacle: string;
+  obstacleEdge: string;
+  /** Glow color used behind moving obstacles. */
+  obstacleGlow: string;
+
+  text: string;
+  textDim: string;
+  teal: string;
+  orange: string;
+  danger: string;
+  /** Glow color used behind the death title. */
+  dangerGlow: string;
+  gold: string;
+  legendary: string;
+}
+
+export const PALETTE: Palette = {
   bg: '#0e1116',
   grid: '#171e2a',
   gridEdge: '#222d3f',
@@ -58,6 +108,7 @@ export const PALETTE = {
   snakeBodyBright: '#2dd4bf',
   snakeOutline: '#0a3a36',
   acid: '#22d3ee',
+  headGlow: 'rgba(94, 234, 212, 0.55)',
 
   essence: '#5eead4',
   essenceGlow: 'rgba(94, 234, 212, 0.5)',
@@ -74,12 +125,14 @@ export const PALETTE = {
 
   obstacle: '#f97316',
   obstacleEdge: '#fdba74',
+  obstacleGlow: 'rgba(249, 115, 22, 0.5)',
 
   text: '#e6edf3',
   textDim: '#8b97a7',
   teal: '#2dd4bf',
   orange: '#f97316',
   danger: '#ef4444',
+  dangerGlow: 'rgba(239, 68, 68, 0.5)',
   gold: '#fbbf24',
   legendary: '#a78bfa',
-} as const;
+};

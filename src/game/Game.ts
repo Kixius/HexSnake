@@ -10,6 +10,11 @@ import { Renderer } from '../render/Renderer';
 import { Hud, type HudData } from '../ui/Hud';
 import { Overlays } from '../ui/Overlays';
 import { Input } from '../input/Input';
+import { exitApp } from '../platform/tauri';
+import { audioManager } from '../audio/AudioManager';
+import { MenuController } from '../ui/menu/MenuController';
+import { applyTheme } from '../theme';
+import { settingsStore } from '../settings/SettingsStore';
 import { type DeathReason, type Direction, type RunSummary, Occupant } from './types';
 import { State } from './GameState';
 
@@ -24,6 +29,7 @@ export class Game {
   private hud = new Hud();
   private overlays: Overlays;
   private input = new Input();
+  private menu: MenuController;
 
   private dpr = 1;
   private w = 0;
@@ -56,6 +62,12 @@ export class Game {
     this.ctx = ctx;
     this.renderer = new Renderer(ctx);
     this.overlays = new Overlays(ctx);
+    this.menu = new MenuController({
+      startRun: () => this.startRun(),
+      exit: () => {
+        void exitApp();
+      },
+    });
   }
 
   // ---- lifecycle ----
@@ -66,10 +78,53 @@ export class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.accumulator = 0;
     });
+    // Apply saved settings before the first frame: theme colors + key bindings + audio.
+    const settings = settingsStore.load();
+    applyTheme(settings.theme);
+    this.input.applyKeybinds(settings.keybinds);
+    audioManager.apply(settings.audio);
+    // Re-bind keys + re-apply theme/audio live whenever settings change.
+    settingsStore.onChange((s) => {
+      this.input.applyKeybinds(s.keybinds);
+      applyTheme(s.theme);
+      audioManager.apply(s.audio);
+    });
     this.input.attach();
     window.addEventListener('keydown', (e) => this.onMetaKey(e));
     this.canvas.addEventListener('click', (e) => this.onClick(e));
+    // Resume the AudioContext on the first user gesture (browser autoplay policy).
+    const resumeOnce = () => {
+      audioManager.resume();
+      window.removeEventListener('pointerdown', resumeOnce);
+      window.removeEventListener('keydown', resumeOnce);
+    };
+    window.addEventListener('pointerdown', resumeOnce);
+    window.addEventListener('keydown', resumeOnce);
+    // Menu pointer interaction (hover / drag / click for widgets).
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (this.state !== State.Menu) return;
+      const p = this.canvasPos(e);
+      this.menu.onPointerDown(p.x, p.y);
+    });
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (this.state !== State.Menu) return;
+      const rect = this.canvas.getBoundingClientRect();
+      this.menu.onPointerMove(e.clientX - rect.left, e.clientY - rect.top, true);
+    });
+    this.canvas.addEventListener('pointerup', () => {
+      if (this.state !== State.Menu) return;
+      this.menu.onPointerUp();
+    });
+    this.canvas.addEventListener('pointerleave', () => {
+      if (this.state !== State.Menu) return;
+      this.menu.onPointerMove(0, 0, false);
+    });
     requestAnimationFrame(this.loop);
+  }
+
+  private canvasPos(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
   private resize(): void {
@@ -80,6 +135,7 @@ export class Game {
     this.canvas.height = Math.floor(this.h * this.dpr);
     this.renderer.resize(this.w, this.h);
     this.overlays.resize(this.w, this.h);
+    this.menu.resize(this.w, this.h);
   }
 
   // ---- the loop ----
@@ -202,6 +258,7 @@ export class Game {
     this.snap = createSnapshot();
     this.upgrades = new UpgradeSystem();
     this.runSummary = null;
+    this.menu.reset();
     this.beginFloor();
     this.state = State.Playing;
   }
@@ -279,17 +336,17 @@ export class Game {
   // ---- input ----
 
   private onMetaKey(e: KeyboardEvent): void {
-    if (this.state === State.Menu && e.code === 'Enter') {
-      this.startRun();
-      e.preventDefault();
+    if (this.state === State.Menu) {
+      if (this.menu.onKey(e)) e.preventDefault();
     } else if (this.state === State.Dead && e.code === 'Enter') {
+      this.menu.reset();
       this.state = State.Menu;
       e.preventDefault();
     } else if (this.state === State.UpgradeSelect) {
       if (e.code === 'Digit1') this.pickUpgrade(0);
       else if (e.code === 'Digit2') this.pickUpgrade(1);
       else if (e.code === 'Digit3') this.pickUpgrade(2);
-    } else if (this.state === State.Playing && e.code === 'KeyP') {
+    } else if (this.state === State.Playing && e.code === settingsStore.current.keybinds.pause) {
       this.paused = !this.paused;
       e.preventDefault();
     }
@@ -312,7 +369,7 @@ export class Game {
     ctx.imageSmoothingEnabled = false;
 
     if (this.state === State.Menu) {
-      this.overlays.drawMenu();
+      this.menu.render(ctx);
       return;
     }
 
