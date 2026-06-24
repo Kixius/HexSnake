@@ -1,9 +1,9 @@
 import { CONFIG, PALETTE } from '../config';
-import { type Hex, hexesInRadius, hexToPixel } from '../grid/hex';
+import { type Hex, hexKey, hexesInRadius, hexToPixel } from '../grid/hex';
 import { type GameSnapshot } from '../upgrades/snapshot';
 import { Occupant, type MovingObstacle } from '../game/types';
 import type { GridManager } from '../grid/GridManager';
-import type { SnakeController, AcidTrail } from '../snake/SnakeController';
+import type { SnakeController } from '../snake/SnakeController';
 import { paintCircle, paintHex, traceHex } from './HexPainter';
 
 export interface RenderState {
@@ -75,7 +75,7 @@ export class Renderer {
 
     this.drawGrid(rs);
     this.drawWallsAndSlime(rs);
-    this.drawAcidTrails(rs.snake.acidTrails, rs.now);
+    this.drawAcidicHexes(rs);
     this.drawEssence(rs);
     this.drawCore(rs);
     if (rs.portalActive) this.drawPortal(rs);
@@ -150,17 +150,18 @@ export class Renderer {
     }
   }
 
-  private drawAcidTrails(trails: AcidTrail[], now: number): void {
+  // Acidic Trail: pulsing acid on the snake's trailing hexes (destroys hazards).
+  private drawAcidicHexes(rs: RenderState): void {
+    if (rs.snake.acidicHexes.size === 0) return;
     const ctx = this.ctx;
-    const lifespan = 700;
-    for (const a of trails) {
-      const age = now - a.bornMs;
-      const t = Math.max(0, 1 - age / lifespan);
-      if (t <= 0) continue;
-      const p = this.toScreen(a.hex);
+    const s = this.size;
+    const pulse = 0.5 + 0.5 * Math.sin(rs.now / 200);
+    for (const c of rs.grid.cells) {
+      if (!rs.snake.acidicHexes.has(hexKey(c))) continue;
+      const p = this.toScreen(c);
       ctx.save();
-      ctx.globalAlpha = 0.5 * t;
-      paintCircle(ctx, p.x, p.y, this.size * 0.5 * t, PALETTE.acid);
+      ctx.globalAlpha = 0.35 + 0.3 * pulse;
+      paintCircle(ctx, p.x, p.y, s * 0.44, PALETTE.acid);
       ctx.restore();
     }
   }
@@ -258,11 +259,20 @@ export class Renderer {
   private drawObstacles(rs: RenderState): void {
     const ctx = this.ctx;
     const s = this.size;
+    // Obstacles advance one hex every `obstacleMoveEvery` ticks, so their glide
+    // spans that many ticks — not the per-tick `alpha` the snake uses. Using
+    // `alpha` alone made them visibly vibrate between hexes each tick (the
+    // "glitch" from floor 3 on, when obstacles first appear). `moveCounter`
+    // counts down from the period after each move, so this phase runs 0→1 across
+    // exactly one hex-to-hex glide and hits 1 as the next move begins.
+    const period = CONFIG.obstacleMoveEvery;
     for (const o of rs.obstacles) {
+      const phase =
+        period > 0 ? Math.min(1, (period - o.moveCounter + rs.alpha) / period) : rs.alpha;
       const a = this.toScreen(o.prevHex);
       const b = this.toScreen(o.hex);
-      const x = a.x + (b.x - a.x) * rs.alpha;
-      const y = a.y + (b.y - a.y) * rs.alpha;
+      const x = a.x + (b.x - a.x) * phase;
+      const y = a.y + (b.y - a.y) * phase;
       ctx.save();
       ctx.shadowColor = 'rgba(249,115,22,0.5)';
       ctx.shadowBlur = 12;

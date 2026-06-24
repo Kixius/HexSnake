@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { type Hex, hexKey } from '../grid/hex';
+import { type Hex, equals, hexKey } from '../grid/hex';
 import { type GameSnapshot, createSnapshot } from '../upgrades/snapshot';
 import { UpgradeSystem } from '../upgrades/UpgradeSystem';
 import { type MutationDef } from '../upgrades/registry';
@@ -35,6 +35,10 @@ export class Game {
   private essenceCollected = 0;
   private portalActive = false;
   private paused = false;
+  /** Floor-clear pick is pending: generate the next floor AFTER the upgrade is
+   *  applied, so FloorGenerator.generate() sees the updated snapshot (e.g.
+   *  Nutrient Storage's essenceReduction). */
+  private floorAdvancePending = false;
 
   private floor: Floor | null = null;
   private snake: SnakeController | null = null;
@@ -83,7 +87,7 @@ export class Game {
   private tickDt(): number {
     const rate = Math.min(
       CONFIG.maxTickRate,
-      CONFIG.baseTickRate + CONFIG.tickRatePerDepth * (this.depth - 1),
+      (CONFIG.baseTickRate + CONFIG.tickRatePerDepth * (this.depth - 1)) * this.snap.speedMult,
     );
     return 1000 / rate;
   }
@@ -123,23 +127,37 @@ export class Game {
     if (!snake || !floor) return;
 
     if (this.input.consumePhase()) snake.activatePhase(this.snap, now);
+    if (this.input.consumeSlip()) snake.activateSlip(this.snap, now);
+
+    // Pull exactly one queued direction, no-reverse-validated against the current
+    // heading. At floor launch we step with it on this same tick so the body
+    // realigns to the heading right away — otherwise a follow-up turn queued
+    // before the first step (e.g. A then Q) would be validated against the
+    // post-turn heading while the body is still in its launch orientation,
+    // driving the head straight into the neck. (Same fix covers a Chamber Core
+    // halt: the body must realign on the first post-halt step.)
+    const candidate = this.input.consumeNext(snake.heading);
 
     if (!snake.started) {
-      // Respect no-reverse even at launch (can't reverse into your own body).
-      const d = this.input.consumeNext(snake.heading);
-      if (d !== null) {
-        snake.heading = d;
-        snake.started = true;
-      }
-      return;
+      if (candidate === null) return; // wait for the first steer
+      snake.heading = candidate;
+      snake.started = true;
     }
 
-    const candidate = this.input.consumeNext(snake.heading);
     const res = snake.step(floor.grid, floor.obstacles, this.snap, now, this.tickDt(), candidate);
 
     if (res.ateEssence) {
       this.essenceCollected++;
       this.score += Math.round(CONFIG.scorePerEssence * this.snap.scoreMult);
+      // Tri-Directional Fork: eating one cluster member dissolves the other two.
+      const sibs = floor.clusters.get(hexKey(snake.head));
+      if (sibs) {
+        for (const s of sibs) {
+          if (!equals(s, snake.head) && floor.grid.occupantOf(s) === Occupant.Essence) {
+            floor.grid.clear(s);
+          }
+        }
+      }
       if (!this.portalActive && this.essenceCollected >= floor.essenceNeeded) {
         FloorGenerator.spawnPortal(floor.grid, snake.head);
         this.portalActive = true;
@@ -159,9 +177,21 @@ export class Game {
       return;
     }
 
-    // Obstacles roam (they avoid the snake, so no post-move head kill).
+    // Ouroboros Loop: score the vaporized hazards and drop the enclosed obstacles.
+    if (res.loopedHazards > 0) {
+      this.score += Math.round(res.loopedHazards * CONFIG.scorePerLooped * this.snap.scoreMult);
+      const kill = new Set(res.loopInsideKeys);
+      floor.obstacles = floor.obstacles.filter((o) => !kill.has(hexKey(o.hex)));
+    }
+    // Apex Predator: biting the tail resets the score multiplier.
+    if (res.apexEaten > 0) {
+      this.upgrades.resetMultiplier(this.snap);
+    }
+
+    // Obstacles roam (they avoid the snake, so no post-move head kill). Acidic
+    // Trail dissolves any that sit on or cross the snake's trailing acid hexes.
     const snakeCells = new Set(snake.segments.map((s) => hexKey(s)));
-    stepObstacles(floor.obstacles, floor.grid, snakeCells);
+    stepObstacles(floor.obstacles, floor.grid, snakeCells, snake.acidicHexes);
   }
 
   // ---- transitions ----
@@ -177,7 +207,7 @@ export class Game {
   }
 
   private beginFloor(): void {
-    this.floor = FloorGenerator.generate(this.depth);
+    this.floor = FloorGenerator.generate(this.depth, this.snap);
     const floor = this.floor;
     const heading: Direction = 2; // SE
     if (this.snake) {
@@ -202,7 +232,10 @@ export class Game {
   private onFloorCleared(): void {
     this.score += Math.round(CONFIG.scorePerDepthCleared * this.snap.scoreMult);
     this.depth++;
-    this.beginFloor();
+    // Defer beginFloor() until after the pick — floor generation reads the
+    // snapshot (e.g. Nutrient Storage's essenceReduction), so it must see the
+    // just-applied upgrade, not the pre-pick value.
+    this.floorAdvancePending = true;
     this.openUpgradeSelect();
   }
 
@@ -218,6 +251,17 @@ export class Game {
     this.snake?.onUpgradesChanged(this.snap);
     this.choices = [];
     this.input.clearQueue(); // discard directions mashed during the card screen
+
+    if (this.floorAdvancePending) {
+      // Floor-clear pick: now generate the next floor with the updated snapshot.
+      this.floorAdvancePending = false;
+      this.beginFloor(); // reposition() resets the snake to launch (started=false)
+    } else if (this.snake) {
+      // Chamber Core pick: stay on this floor, but re-enter the launch state so
+      // the player steers out deliberately instead of instantly resuming into a
+      // wall — same as the start of a fresh floor.
+      this.snake.haltForLaunch();
+    }
     this.state = State.Playing;
   }
 
@@ -308,6 +352,13 @@ export class Game {
       maxHealth: this.snap.maxHealth,
       mutations: this.upgrades.active,
       phase: snake ? snake.phaseState(this.snap, now) : {
+        enabled: false,
+        active: false,
+        activeFrac: 0,
+        cooldownFrac: 0,
+        ready: false,
+      },
+      slip: snake ? snake.slipState(this.snap, now) : {
         enabled: false,
         active: false,
         activeFrac: 0,

@@ -36,6 +36,7 @@ const MAX_QUEUE = 3;
 export class Input {
   private queue: Direction[] = [];
   private phaseRequested = false;
+  private slipRequested = false;
   /** Becomes true on first direction press (used to launch a floor). */
   private directed = false;
   private handler = (e: KeyboardEvent) => this.onKeyDown(e);
@@ -62,6 +63,11 @@ export class Input {
     }
     if (e.code === 'Space') {
       this.phaseRequested = true;
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      this.slipRequested = true;
       e.preventDefault();
     }
   }
@@ -91,6 +97,12 @@ export class Input {
     return r;
   }
 
+  consumeSlip(): boolean {
+    const r = this.slipRequested;
+    this.slipRequested = false;
+    return r;
+  }
+
   /** Discard queued directions (e.g. keys mashed during an overlay screen). */
   clearQueue(): void {
     this.queue.length = 0;
@@ -99,6 +111,7 @@ export class Input {
   resetFloor(): void {
     this.queue.length = 0;
     this.phaseRequested = false;
+    this.slipRequested = false;
     this.directed = false;
   }
 }

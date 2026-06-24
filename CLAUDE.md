@@ -69,20 +69,32 @@ logic tick; `render(alpha)` lerps each segment between `prevSegments` and `segme
 DPR transform each frame before drawing — `Renderer.render` must **not** reset it.
 
 **Upgrade seam — `GameSnapshot`** (`src/upgrades/snapshot.ts`): a single shared struct
-of tunables owned by GameManager. `UpgradeSystem.apply()` is the *only* writer;
-`SnakeController`, `Renderer`, and `Hud` read it each tick. **Never** scatter
-`if (hasAcidTrail)` checks — add a field to `GameSnapshot`, set it in
-`registry.ts`, and read it where needed.
+of tunables owned by GameManager. `UpgradeSystem.apply()` (and `resetMultiplier()`,
+used by Apex Predator) are the *only* writers — with two documented runtime
+exceptions where `SnakeController.step` writes directly: `health` (slime DoT) and
+`hydraUsed` (the one-time Hydra split). `Renderer` and `Hud` read the snapshot each
+tick. **Never** scatter `if (hasAcidicTrail)` checks — add a field to `GameSnapshot`,
+set it in `registry.ts`, and read it where needed. The pool is a curated **12-card
+draft** across four rarities (common/rare/epic/legendary); `UpgradeSystem.rollThree()`
+offers 3 weighted-distinct choices on floor-clear and chamber-core-consume.
 
 ## Critical invariants (don't break these)
 
-- **Tail collision = death is absolute.** Health (`maxHealth`, default 1) is tapped only
-  by slime DoT. **Thick Scales** soaks a wall hit via a *separate* `wallCharges` counter
-  (per-floor refill), not HP. The only way to survive self-collision is the active
-  **Phase Shifter** window (`Space`) — never HP.
+- **Self/obstacle collision = death, unless a card resolves it.** Health (`maxHealth`,
+  default 1) is tapped only by slime DoT. **Chitinous Shell** soaks a wall hit via a
+  *separate* `wallCharges` counter (per-floor refill, cap 2) and shatters the struck
+  placed wall, not HP. Self-collision is death *unless* one of these is active: the
+  **Phase Shifter** window (`Space`), **Apex Predator** (devours the bitten tail and
+  resets the score multiplier via `UpgradeSystem.resetMultiplier`), or **Ouroboros
+  Loop** (vaporizes enclosed hazards, then truncates the body to clear the overlap).
+  **Hydra's Venom** (1×/run) survives an obstacle hit by severing the front half — the
+  tail half reverses to become the new head (heading derived neck→head so it moves
+  *outward*, never into its own neck).
 - **Collision resolution order in `SnakeController.step`** is fixed, first-match-wins:
-  bounds/wall (→ soak or die) → moving obstacle → slime (DoT) → own body (unless phasing)
-  → essence → chamber core → portal.
+  bounds/wall (→ active **Diagonal Slip** deflects along a placed wall, else Chitinous
+  soak+shatter, else die) → moving obstacle (→ **Hydra** split or die) → commit move →
+  own body via `selfCollideIndex` (→ **Apex** eat / **Ouroboros** capture / die, unless
+  phasing) → essence → chamber core → portal → slime (DoT, death check last).
 - **Moving obstacles avoid the snake** (and each other) when roaming — they never insta-kill
   by parking on the head. The danger is the snake steering *into* one. (This deliberately
   differs from the plan's "post-move head overlap" for fairness.)
@@ -90,21 +102,25 @@ of tunables owned by GameManager. `UpgradeSystem.apply()` is the *only* writer;
   per tick** via `consumeNext`, re-validating no-reverse against the post-turn heading.
   The launch path also uses `consumeNext` (never bypass it — reversing into the starting
   body would be an instant-death bug).
-- **Real-time timers are framerate-independent:** Acid Trail melt and Phase Shifter use
-  `performance.now()` / `dt`, advanced in `update()`, not per-render.
-- **Acid Trail** trims the tail on a real-time timer (`meltDelayMs`) — melted segments
-  are simply removed (so they can't cause self-collision) and drawn as fading acid in
-  `snake.acidTrails`.
+- **Real-time timers are framerate-independent:** the Phase Shifter and Diagonal Slip
+  cooldowns use `performance.now()` (advanced via the `now` passed into `update()`), not
+  per-render.
+- **Acidic Trail** marks the snake's last ≤3 tail segments (`snake.acidicHexes`,
+  recomputed each step) as acid. `stepObstacles` dissolves any moving obstacle that
+  stands on or crosses one of those hexes (spliced out of `floor.obstacles`). The old
+  tail-melting Acid Trail was removed when the card was repurposed.
 
 ## Procedural floors
 
-`FloorGenerator.generate(depth)` returns a `Floor` (grid + obstacles + spawn +
-`essenceNeeded`). Difficulty scales with depth (tick rate, wall density, slime/obstacle
-counts). **BFS connectivity is guaranteed**: every wall placement is checked — if it
-would disconnect any passable cell from spawn, it is rejected. The portal (and Chamber
-Core) are placed at the **farthest reachable cell** from the relevant origin (snake head
-for the portal). Chamber Core is hidden beyond `max(4, snap.radarRadius)` hexes —
-**Split Tongue** is what reveals it from afar.
+`FloorGenerator.generate(depth, snap)` returns a `Floor` (grid + obstacles + spawn +
+`essenceNeeded` + `clusters`). Difficulty scales with depth (tick rate, wall density,
+slime/obstacle counts). **Nutrient Storage** lowers `essenceNeeded` (min 1); **Tri-
+Directional Fork** lays essence as 3-adjacent-hex clusters (`Floor.clusters` maps each
+member to its siblings so eating one clears the rest — 1 cluster = 1 toward the portal).
+**BFS connectivity is guaranteed**: every wall placement is checked — if it would
+disconnect any passable cell from spawn, it is rejected. The portal (and Chamber Core)
+are placed at the **farthest reachable cell** from the relevant origin (snake head for
+the portal). Chamber Core is hidden beyond `max(4, snap.radarRadius)` hexes.
 
 ## Tuning
 

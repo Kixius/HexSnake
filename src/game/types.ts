@@ -30,8 +30,18 @@ export interface StepResult {
   ateCore: boolean;
   reachedPortal: boolean;
   onSlime: boolean;
-  /** Thick Scales consumed a wall/bounds charge this step (move cancelled). */
+  /** A wall/bounds charge was consumed this step (move cancelled). */
   wallSoaked: boolean;
+  /** Chitinous Shell shattered the struck wall hex into open space (VFX hook). */
+  wallBroken: boolean;
+  /** Hydra's Venom triggered: front half severed, tail half now leads (VFX hook). */
+  hydraSplit: boolean;
+  /** Ouroboros Loop: number of hazards vaporized inside the closed body loop. */
+  loopedHazards: number;
+  /** Hex keys of obstacles destroyed by Ouroboros (Game.ts filters floor.obstacles). */
+  loopInsideKeys: string[];
+  /** Apex Predator: tail segments devoured (>0 ⇒ Game.ts resets score multiplier). */
+  apexEaten: number;
 }
 
 export interface RunSummary {

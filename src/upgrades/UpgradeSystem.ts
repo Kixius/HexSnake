@@ -49,6 +49,14 @@ export class UpgradeSystem {
     this.active.length = 0;
   }
 
+  /**
+   * Apex Predator resets the score multiplier to 1. Routed through UpgradeSystem
+   * so it remains the sole writer of GameSnapshot (see CLAUDE.md seam rule).
+   */
+  resetMultiplier(snap: GameSnapshot): void {
+    snap.scoreMult = 1;
+  }
+
   /** Summary entries for the death screen. */
   buildSummary(): { name: string; stacks: number }[] {
     return this.active.map((a) => ({ name: a.def.name, stacks: a.stacks }));

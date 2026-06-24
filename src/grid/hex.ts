@@ -74,6 +74,18 @@ export function neighbors(h: Hex): Hex[] {
   return DIRS.map((d) => add(h, d));
 }
 
+/**
+ * Direction index from `from` to an adjacent `to`, or null if `to` is not a
+ * direct neighbor. Used to derive headings from segment pairs (e.g. Hydra split).
+ */
+export function directionOf(from: Hex, to: Hex): number | null {
+  for (let i = 0; i < NUM_DIRS; i++) {
+    const d = DIRS[i];
+    if (d && from.q + d.q === to.q && from.r + d.r === to.r) return i;
+  }
+  return null;
+}
+
 /** Hex distance in steps. */
 export function distance(a: Hex, b: Hex): number {
   const dq = a.q - b.q;

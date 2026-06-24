@@ -14,6 +14,7 @@ export interface HudData {
   maxHealth: number;
   mutations: ActiveMutation[];
   phase: PhaseState;
+  slip: PhaseState;
 }
 
 const FONT = "'Consolas', 'Courier New', monospace";
@@ -47,7 +48,8 @@ export class Hud {
     // Bottom-left: active mutations.
     this.drawMutations(ctx, d.mutations);
 
-    // Bottom-center: phase ability.
+    // Bottom-center: active abilities.
+    if (d.slip.enabled) this.drawSlip(ctx, w, d.slip);
     if (d.phase.enabled) this.drawPhase(ctx, w, d.phase);
 
     ctx.restore();
@@ -129,6 +131,23 @@ export class Hud {
     ctx.fillStyle = PALETTE.grid;
     ctx.fillRect(cx - bw / 2, y + 20, bw, 6);
     ctx.fillStyle = p.active ? PALETTE.teal : PALETTE.gold;
+    ctx.fillRect(cx - bw / 2, y + 20, bw * frac, 6);
+    ctx.textAlign = 'left';
+  }
+
+  private drawSlip(ctx: CanvasRenderingContext2D, w: number, p: PhaseState): void {
+    const label = p.active ? 'SLIPPING' : p.ready ? '[SHIFT] SLIP READY' : 'SLIP …';
+    ctx.font = `14px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = p.active ? PALETTE.orange : p.ready ? PALETTE.gold : PALETTE.textDim;
+    const cx = w / 2;
+    const y = this.h - 64;
+    ctx.fillText(label, cx, y);
+    const frac = p.active ? p.activeFrac : 1 - p.cooldownFrac;
+    const bw = 180;
+    ctx.fillStyle = PALETTE.grid;
+    ctx.fillRect(cx - bw / 2, y + 20, bw, 6);
+    ctx.fillStyle = p.active ? PALETTE.orange : PALETTE.gold;
     ctx.fillRect(cx - bw / 2, y + 20, bw * frac, 6);
     ctx.textAlign = 'left';
   }

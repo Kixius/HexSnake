@@ -20,6 +20,7 @@ export const CONFIG = {
   scorePerEssence: 10,
   scorePerCore: 75,
   scorePerDepthCleared: 50,
+  scorePerLooped: 25,
 
   /** Hazards (scale with depth). */
   wallDensityBase: 0.05,
@@ -31,6 +32,9 @@ export const CONFIG = {
   obstaclePerDepth: 0.6,
   obstacleMoveEvery: 2, // obstacle moves once every N ticks
   chamberCoreChance: 0.3,
+  /** Chamber Cores only spawn on cells with at least this many adjacent hexes
+   *  free of walls/slime, so the snake always has an escape route after eating. */
+  chamberCoreMinEscapeHexes: 2,
 
   /** Health / damage. */
   startHealth: 1,
@@ -77,4 +81,5 @@ export const PALETTE = {
   orange: '#f97316',
   danger: '#ef4444',
   gold: '#fbbf24',
+  legendary: '#a78bfa',
 } as const;

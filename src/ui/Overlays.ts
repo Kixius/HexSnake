@@ -149,6 +149,15 @@ export class Overlays {
     ctx.font = `bold 22px ${FONT}`;
     this.wrapText(ctx, c.def.name, c.x + pad, c.y + 52, c.w - pad * 2, 26);
 
+    if (c.def.flavor) {
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = color;
+      ctx.font = `italic 13px ${FONT}`;
+      this.wrapText(ctx, c.def.flavor, c.x + pad, c.y + 92, c.w - pad * 2, 16);
+      ctx.restore();
+    }
+
     ctx.fillStyle = PALETTE.textDim;
     ctx.font = `15px ${FONT}`;
     this.wrapText(ctx, c.def.description, c.x + pad, c.y + 130, c.w - pad * 2, 22);

@@ -1,7 +1,8 @@
 import { CONFIG } from '../config';
-import { type Hex, distance, hexKey, neighbors } from '../grid/hex';
+import { type Hex, clone, distance, hexKey, neighbors } from '../grid/hex';
 import { GridManager } from '../grid/GridManager';
 import { type MovingObstacle, Occupant } from '../game/types';
+import type { GameSnapshot } from '../upgrades/snapshot';
 
 export interface Floor {
   grid: GridManager;
@@ -10,15 +11,19 @@ export interface Floor {
   /** Essence pellets required to open the portal. */
   essenceNeeded: number;
   hasCore: boolean;
+  /** Tri-Directional Fork: maps each cluster-member hex key to its sibling hexes,
+   *  so eating one member can clear the rest. Empty on non-Fork floors. */
+  clusters: Map<string, Hex[]>;
 }
 
 /**
  * Procedural floor generator. Guarantees via BFS that every non-wall cell is
  * reachable from spawn (the floor is always solvable). Difficulty scales with
  * depth: more/faster ticks, denser walls, more slime and roaming obstacles.
+ * The snapshot drives card-driven generation (Nutrient Storage, Tri-Directional Fork).
  */
 export class FloorGenerator {
-  static generate(depth: number): Floor {
+  static generate(depth: number, snap: GameSnapshot): Floor {
     const grid = new GridManager(CONFIG.radius);
     const spawn: Hex = { q: 0, r: 0 };
     grid.clear(spawn);
@@ -46,14 +51,25 @@ export class FloorGenerator {
     const slimeCount = Math.floor(CONFIG.slimeBase + CONFIG.slimePerDepth * (depth - 1));
     placeRandom(grid, spawn, safe, slimeCount, Occupant.Slime);
 
-    // (3) Essence pellets (spread out, away from spawn so the snake must move).
-    const essenceNeeded = CONFIG.essenceBase + CONFIG.essencePerDepth * (depth - 1);
-    placeSpread(grid, spawn, safe, essenceNeeded, Occupant.Essence);
+    // (3) Essence pellets. Nutrient Storage lowers the requirement (min 1);
+    //     Tri-Directional Fork lays them as 3-adjacent clusters.
+    const essenceNeeded = Math.max(
+      1,
+      CONFIG.essenceBase + CONFIG.essencePerDepth * (depth - 1) - snap.essenceReduction,
+    );
+    const clusters = new Map<string, Hex[]>();
+    if (snap.forkEnabled) {
+      placeClusters(grid, spawn, safe, essenceNeeded, clusters);
+    } else {
+      placeSpread(grid, spawn, safe, essenceNeeded, Occupant.Essence);
+    }
 
-    // (4) Chamber Core (rare) at the farthest reachable cell from spawn.
+    // (4) Chamber Core (rare) at the farthest reachable cell from spawn — but
+    //     only on a cell with enough wall/slime-free neighbors that the snake
+    //     can actually leave after eating it (no dead-end traps).
     let hasCore = false;
     if (Math.random() < CONFIG.chamberCoreChance) {
-      const far = farthestEmpty(grid, spawn);
+      const far = farthestEmpty(grid, spawn, CONFIG.chamberCoreMinEscapeHexes);
       if (far) {
         grid.setOccupant(far, Occupant.ChamberCore);
         hasCore = true;
@@ -73,7 +89,7 @@ export class FloorGenerator {
       obstacles.push({ hex: c, prevHex: c, moveCounter: CONFIG.obstacleMoveEvery });
     }
 
-    return { grid, obstacles, spawn, essenceNeeded, hasCore };
+    return { grid, obstacles, spawn, essenceNeeded, hasCore, clusters };
   }
 
   /** Open the portal at the passable empty cell farthest from the snake head. */
@@ -136,12 +152,26 @@ function bfsDistances(grid: GridManager, start: Hex): Map<string, number> {
   return dist;
 }
 
-function farthestEmpty(grid: GridManager, from: Hex): Hex | null {
+/** Count in-bounds neighbors of `c` that are passable (not wall, not slime). */
+function freeNeighborCount(grid: GridManager, c: Hex): number {
+  let n = 0;
+  for (const nb of neighbors(c)) {
+    if (!grid.inBounds(nb)) continue;
+    const occ = grid.occupantOf(nb);
+    if (occ !== Occupant.Wall && occ !== Occupant.Slime) n++;
+  }
+  return n;
+}
+
+/** Farthest empty cell from `from` (BFS). If `minFreeNeighbors > 0`, the cell
+ *  must also have at least that many wall/slime-free neighbors. */
+function farthestEmpty(grid: GridManager, from: Hex, minFreeNeighbors = 0): Hex | null {
   const dist = bfsDistances(grid, from);
   let best: Hex | null = null;
   let bestD = -1;
   for (const c of grid.cells) {
     if (grid.occupantOf(c) !== Occupant.Empty) continue;
+    if (minFreeNeighbors > 0 && freeNeighborCount(grid, c) < minFreeNeighbors) continue;
     const d = dist.get(hexKey(c)) ?? -1;
     if (d > bestD) {
       bestD = d;
@@ -187,5 +217,37 @@ function placeSpread(
     if (placed.some((p) => distance(p, c) < 2)) continue;
     grid.setOccupant(c, occ);
     placed.push(c);
+  }
+}
+
+/**
+ * Tri-Directional Fork: lay `count` essence clusters, each an anchor plus two
+ * adjacent empty hexes. Every member maps to its sibling list in `clusters`
+ * so eating one member can clear the rest (1 cluster = 1 toward the portal).
+ */
+function placeClusters(
+  grid: GridManager,
+  spawn: Hex,
+  safe: number,
+  count: number,
+  clusters: Map<string, Hex[]>,
+): void {
+  const anchors: Hex[] = [];
+  let guard = 0;
+  while (anchors.length < count && guard < count * 80 + 100) {
+    guard++;
+    const anchor = randCell(grid.cells);
+    if (distance(anchor, spawn) <= safe) continue;
+    if (grid.occupantOf(anchor) !== Occupant.Empty) continue;
+    if (anchors.some((p) => distance(p, anchor) < 3)) continue;
+    const adj = neighbors(anchor).filter(
+      (n) => grid.inBounds(n) && grid.occupantOf(n) === Occupant.Empty,
+    );
+    if (adj.length < 2) continue; // need a trio
+    const members = [anchor, adj[0]!, adj[1]!];
+    for (const m of members) grid.setOccupant(m, Occupant.Essence);
+    const siblings = members.map(clone);
+    for (const m of members) clusters.set(hexKey(m), siblings);
+    anchors.push(anchor);
   }
 }
