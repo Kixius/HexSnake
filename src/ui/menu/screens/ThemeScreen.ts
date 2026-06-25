@@ -7,7 +7,7 @@ import type { Screen } from '../types';
  *  live (applyTheme mutates PALETTE in place; the settings subscription also
  *  re-applies on change). */
 export const themeScreen: Screen = {
-  render(ctx, ui, _api, w, h) {
+  render(ctx, ui, api, w, h) {
     screenTitle(ctx, w, h, 'THEME', 'pick a palette — applies live');
 
     const rowW = Math.min(360, w * 0.5);
@@ -36,7 +36,7 @@ export const themeScreen: Screen = {
       y += rowH + gap;
     }
 
-    backButton(ctx, ui, w, h);
+    if (backButton(ctx, ui, w, h)) api.pop();
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';

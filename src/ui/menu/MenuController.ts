@@ -9,6 +9,7 @@ import { themeScreen } from './screens/ThemeScreen';
 import type { MenuApi, Screen, ScreenId } from './types';
 import { UiContext } from './UiContext';
 import { button } from './widgets';
+import { settingsStore } from '../../settings/SettingsStore';
 
 export interface MenuActions {
   startRun(): void;
@@ -104,24 +105,40 @@ export class MenuController {
   onKey(e: KeyboardEvent): boolean {
     const screen = this.screens[this.top()];
     if (screen?.onKey?.(e, this.ui)) return true;
+    // Directional nav follows the player's (rebindable) movement keys, so the
+    // menu reacts to whatever they're currently using in-game: N=up, S=down,
+    // NW/SW=left, NE/SE=right. Arrow keys always work too.
+    const kb = settingsStore.keybinds;
+    if (e.code === kb.dir0) {
+      this.ui.nav.up = true;
+      return true;
+    }
+    if (e.code === kb.dir3) {
+      this.ui.nav.down = true;
+      return true;
+    }
+    if (e.code === kb.dir4 || e.code === kb.dir5) {
+      this.ui.nav.left = true;
+      return true;
+    }
+    if (e.code === kb.dir1 || e.code === kb.dir2) {
+      this.ui.nav.right = true;
+      return true;
+    }
     switch (e.code) {
       case 'Escape':
         this.pop();
         return true;
       case 'ArrowUp':
-      case 'KeyW':
         this.ui.nav.up = true;
         return true;
       case 'ArrowDown':
-      case 'KeyS':
         this.ui.nav.down = true;
         return true;
       case 'ArrowLeft':
-      case 'KeyA':
         this.ui.nav.left = true;
         return true;
       case 'ArrowRight':
-      case 'KeyD':
         this.ui.nav.right = true;
         return true;
       case 'Enter':

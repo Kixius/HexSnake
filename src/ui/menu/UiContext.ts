@@ -36,6 +36,11 @@ export class UiContext {
   pointerDown = false;
   /** Active slider drag owner, or null. */
   dragId: string | null = null;
+  /** Whether the current focus originated from keyboard nav. Mouse movement
+   *  clears this, so a widget's `focused` highlight only shows while the user
+   *  is actually navigating by keyboard — never as a stuck "ghost" hover after
+   *  the pointer leaves. */
+  private focusFromKeyboard = false;
 
   /** Keyboard intents set between frames by the controller; consumed in begin/end. */
   readonly nav = { up: false, down: false, left: false, right: false, activate: false };
@@ -55,6 +60,7 @@ export class UiContext {
     this.mouseY = y;
     this.hasMouse = inside;
     this.mouseMoved = true;
+    this.focusFromKeyboard = false;
   }
 
   /** Pointer pressed: records a click (activates hovered widget this frame) and
@@ -66,6 +72,7 @@ export class UiContext {
     this.pointerDown = true;
     this.clickPending = true;
     this.mouseMoved = true;
+    this.focusFromKeyboard = false;
   }
 
   release(): void {
@@ -85,6 +92,7 @@ export class UiContext {
     this.nav.left = false;
     this.nav.right = false;
     this.nav.activate = false;
+    this.focusFromKeyboard = false;
   }
 
   // ---- per-frame lifecycle ----
@@ -93,6 +101,10 @@ export class UiContext {
     this.rects.length = 0;
     this.hoverId = null;
     this.clickConsumed = false;
+    // Any keyboard intent switches to keyboard mode (shows the focus ring).
+    if (this.nav.up || this.nav.down || this.nav.left || this.nav.right || this.nav.activate) {
+      this.focusFromKeyboard = true;
+    }
     // Resolve directional moves against last frame's layout (stable across frames
     // on the same screen).
     const dir: NavDir | null = this.nav.up
@@ -112,7 +124,10 @@ export class UiContext {
     this.rects.push({ id, x: box.x, y: box.y, w: box.w, h: box.h });
     const hover = this.hasMouse && pointInRect(this.mouseX, this.mouseY, box);
     if (hover) this.hoverId = id;
-    const focused = this.focusId === id;
+    // The focus ring only renders while navigating by keyboard; a mouse-driven
+    // focus (left over from a prior hover) is intentionally hidden so widgets
+    // don't stay lit after the pointer moves away.
+    const focused = this.focusFromKeyboard && this.focusId === id;
     const clicked = hover && this.clickPending && !this.clickConsumed;
     if (clicked) this.clickConsumed = true;
     const activated = clicked || (focused && this.nav.activate);

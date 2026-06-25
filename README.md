@@ -87,7 +87,7 @@ You can't reverse 180° into your own neck (it's ignored).
 | Mutation | Effect |
 | -------- | ------ |
 | **Thick Scales** | +1 max health (tanks slime) + soak one wall hit per floor. |
-| **Acid Trail** | Your tail dissolves over time — stay nimble on long runs. |
+| **Acidic Trail** | Leave a lingering acid wake — roaming hazards that cross it dissolve. |
 | **Phase Shifter** | `Space` to phase through your own body for 3s (9s cooldown). |
 | **Split Tongue** | +3 sense radius — reveals Chamber Cores from afar. |
 | **Growth Hormone** | +2 length per essence and +0.25× score (cap 5×). |

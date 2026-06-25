@@ -1,6 +1,6 @@
 {
   "name": "hexsnake",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Snake on a hexagonal grid with roguelike progression.",

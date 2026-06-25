@@ -3,6 +3,8 @@ import { FONT, drawControls } from '../../paint';
 import { logo } from '../Logo';
 import { isTauri } from '../../../platform/tauri';
 import { button } from '../widgets';
+import { settingsStore } from '../../../settings/SettingsStore';
+import { formatCode } from '../../../settings/Keybinds';
 import type { Screen } from '../types';
 
 /**
@@ -61,7 +63,15 @@ export const mainScreen: Screen = {
     }
 
     // ---- Controls diagram (always visible) ----
-    drawControls(ctx, w / 2, h * 0.82, 'move: Q W E / A S D   ·   ENTER = select   ·   ESC = back');
+    // Diagram + hint reflect the player's current keybinds, so rebinding updates
+    // the main menu immediately.
+    const kb = settingsStore.keybinds;
+    const keys: string[][] = [
+      [formatCode(kb.dir5), formatCode(kb.dir0), formatCode(kb.dir1)],
+      [formatCode(kb.dir4), formatCode(kb.dir3), formatCode(kb.dir2)],
+    ];
+    const hint = `move: ${keys[0]?.join(' ') ?? ''} / ${keys[1]?.join(' ') ?? ''}   ·   ENTER = select   ·   ESC = back`;
+    drawControls(ctx, w / 2, h * 0.82, hint, keys);
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';

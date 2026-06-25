@@ -28,6 +28,18 @@ npm run tauri build  # build the Windows app -> src-tauri/target/release/{app.ex
 desktop builds share **identical game code** — only `vite.config.ts` (`base: './'`, pinned
 dev port) and `src-tauri/tauri.conf.json` are desktop-specific; never fork game logic for it.
 
+**Debug cheat (dev only):** gated on `import.meta.env.DEV` (`src/vite-env.d.ts` types it),
+so it's live under `npm run dev` / `npm run tauri dev` and dead code in production builds.
+- `]` (BracketRight) in `Game.onMetaKey`: during **Playing** it calls `onFloorCleared()`
+  (instantly clears the floor → upgrade pick → next depth); during **UpgradeSelect** it
+  auto-picks the first card. Mash `]` to fast-forward to deep floors / specific upgrades.
+- `\` (Backslash) during **Playing** toggles `debugGodMode`: the snake is invulnerable
+  (deaths are swallowed in `update`) AND `tickDt()` runs at 0.25× (`dt / debugTimeScale`),
+  i.e. slow-mo for inspecting collisions. Toggling on also tops up health and clears the
+  accumulator so the rate change doesn't burst-catch-up.
+
+A dim `DEV` hint is drawn in `renderFrame` via `drawDevHint()`.
+
 `tsconfig.json` uses `"strict": true` and `"noUncheckedIndexedAccess": true`. The latter
 makes array indexing (e.g. `DIRS[i]`, `segments[0]`) type as `T | undefined` — use the
 `head` getter (which throws if empty) and the `dir(i)` helper rather than indexing
@@ -105,10 +117,16 @@ offers 3 weighted-distinct choices on floor-clear and chamber-core-consume.
 - **Real-time timers are framerate-independent:** the Phase Shifter and Diagonal Slip
   cooldowns use `performance.now()` (advanced via the `now` passed into `update()`), not
   per-render.
-- **Acidic Trail** marks the snake's last ≤3 tail segments (`snake.acidicHexes`,
-  recomputed each step) as acid. `stepObstacles` dissolves any moving obstacle that
-  stands on or crosses one of those hexes (spliced out of `floor.obstacles`). The old
-  tail-melting Acid Trail was removed when the card was repurposed.
+- **Acidic Trail** leaves a lingering acid **wake**: each step the rearmost segment
+  drips a fresh pool (`snake.acidTtl`, a hexKey→ticks map), and once the tail recedes
+  off a hex that pool is left behind and decays over `snap.acidicTrailTicks` (default
+  8). `snake.acidicHexes` is the live `ReadonlySet` of still-active pools — read each
+  tick by `Renderer` and `stepObstacles`, the latter dissolving any moving obstacle that
+  stands on or crosses one (spliced out of `floor.obstacles`). The wake is what makes
+  the card work: obstacles avoid the snake's occupied cells, so only the empty vacated
+  hexes behind it can ever dissolve a roaming hazard. The old tail-melting Acid Trail
+  (and the brief "last 3 segments" version that slid with the tail and never lingered)
+  were removed when the card was repurposed.
 
 ## Procedural floors
 

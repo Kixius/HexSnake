@@ -1,6 +1,7 @@
 import { PALETTE } from '../../../config';
 import { FONT } from '../../paint';
 import { settingsStore } from '../../../settings/SettingsStore';
+import { DEFAULT_KEYBINDS } from '../../../settings/defaults';
 import {
   ACTION_LABELS,
   ALL_ACTIONS,
@@ -9,7 +10,7 @@ import {
   isReservedCode,
 } from '../../../settings/Keybinds';
 import type { ActionId } from '../../../settings/types';
-import { backButton, label, listRow, screenTitle } from '../widgets';
+import { button, label, listRow, screenTitle } from '../widgets';
 import type { Screen } from '../types';
 
 /**
@@ -27,10 +28,17 @@ export const keybindsScreen: Screen = {
 
     const kb = settingsStore.keybinds;
     const rowW = Math.min(440, w * 0.62);
-    const rowH = 42;
     const gap = 6;
     const x = (w - rowW) / 2;
-    let y = h * 0.22;
+    // Rows scale to fit between the subtitle and the action bar so all 9 actions
+    // stay visible (and clickable) even at the minimum window height.
+    const top = h * 0.2;
+    const bottomLimit = h * 0.82;
+    const rowH = Math.max(
+      26,
+      Math.min(42, Math.floor((bottomLimit - top - gap * (ALL_ACTIONS.length - 1)) / ALL_ACTIONS.length)),
+    );
+    let y = top;
     for (const action of ALL_ACTIONS) {
       const isRebind = rebinding === action;
       const code = kb[action];
@@ -53,10 +61,37 @@ export const keybindsScreen: Screen = {
     }
 
     if (message) {
-      label(ctx, x, y + 6, message, { color: PALETTE.danger, font: `14px ${FONT}` });
+      label(ctx, x, y + 4, message, { color: PALETTE.danger, font: `14px ${FONT}` });
     }
 
-    if (backButton(ctx, ui, w, h)) {
+    // RESET DEFAULTS + BACK, side by side so they share one row.
+    const btnY = h * 0.9;
+    const btnH = 44;
+    const bw = Math.min(200, w * 0.3);
+    if (
+      button(ctx, ui, {
+        id: 'kb.reset',
+        x: w / 2 - bw - 10,
+        y: btnY,
+        w: bw,
+        h: btnH,
+        label: 'RESET DEFAULTS',
+      })
+    ) {
+      settingsStore.setKeybinds({ ...DEFAULT_KEYBINDS });
+      rebinding = null;
+      message = '';
+    }
+    if (
+      button(ctx, ui, {
+        id: 'screen.back',
+        x: w / 2 + 10,
+        y: btnY,
+        w: bw,
+        h: btnH,
+        label: 'BACK',
+      })
+    ) {
       rebinding = null;
       message = '';
       api.pop();

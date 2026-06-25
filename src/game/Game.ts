@@ -1,4 +1,4 @@
-import { CONFIG } from '../config';
+import { CONFIG, PALETTE } from '../config';
 import { type Hex, equals, hexKey } from '../grid/hex';
 import { type GameSnapshot, createSnapshot } from '../upgrades/snapshot';
 import { UpgradeSystem } from '../upgrades/UpgradeSystem';
@@ -54,6 +54,15 @@ export class Game {
   private choices: MutationDef[] = [];
   private runSummary: RunSummary | null = null;
 
+  /** Dev-only cheats. Statically false in production builds (import.meta.env.DEV),
+   *  so the debug branches are dead code in `tauri build` / `vite build`. */
+  private readonly debug = import.meta.env.DEV;
+  /** Dev cheat toggle (Backslash): snake is invulnerable AND sim runs at 0.25×
+   *  speed (slow-mo) for inspecting collisions/animation. */
+  private debugGodMode = false;
+  /** Time scale used while debugGodMode is on (0.25 = quarter speed). */
+  private readonly debugTimeScale = 0.25;
+
   private lastNow = 0;
   private accumulator = 0;
 
@@ -75,6 +84,13 @@ export class Game {
   start(): void {
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // ResizeObserver catches every canvas size change (browser window, Tauri
+    // desktop window, devtools dock) more reliably than the window 'resize'
+    // event alone, so the app stays resizeable everywhere.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => this.resize());
+      ro.observe(this.canvas);
+    }
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.accumulator = 0;
     });
@@ -145,7 +161,9 @@ export class Game {
       CONFIG.maxTickRate,
       (CONFIG.baseTickRate + CONFIG.tickRatePerDepth * (this.depth - 1)) * this.snap.speedMult,
     );
-    return 1000 / rate;
+    const dt = 1000 / rate;
+    // Slow-mo: a larger dt per tick => fewer ticks fire => 0.25× real time.
+    return this.debugGodMode ? dt / this.debugTimeScale : dt;
   }
 
   private loop = (now: number): void => {
@@ -229,8 +247,15 @@ export class Game {
       return;
     }
     if (res.died) {
-      this.onDeath(res.died);
-      return;
+      if (this.debugGodMode) {
+        // Dev cheat: stay alive. The step already bailed without moving
+        // (wall/obstacle) or committed then flagged (self/slime) — either way we
+        // just swallow the death and keep ticking. Steering clears wall/self bumps.
+        res.died = null;
+      } else {
+        this.onDeath(res.died);
+        return;
+      }
     }
 
     // Ouroboros Loop: score the vaporized hazards and drop the enclosed obstacles.
@@ -336,6 +361,29 @@ export class Game {
   // ---- input ----
 
   private onMetaKey(e: KeyboardEvent): void {
+    // Dev cheat: `]` fast-forwards the run. In play it instantly clears the floor
+    // (→ upgrade pick → next depth); on the upgrade screen it auto-picks the first
+    // card so you can blow through floors without playing them. Dev-only.
+    if (this.debug && e.code === 'BracketRight') {
+      if (this.state === State.Playing) {
+        this.onFloorCleared();
+        e.preventDefault();
+        return;
+      }
+      if (this.state === State.UpgradeSelect) {
+        this.pickUpgrade(0);
+        e.preventDefault();
+        return;
+      }
+    }
+    // Dev cheat: Backslash toggles invulnerable + 0.25× slow-mo during play.
+    if (this.debug && this.state === State.Playing && e.code === 'Backslash') {
+      this.debugGodMode = !this.debugGodMode;
+      this.accumulator = 0; // drop pending ms so the rate change doesn't burst-catch-up
+      if (this.debugGodMode && this.snake) this.snake.health = this.snap.maxHealth;
+      e.preventDefault();
+      return;
+    }
     if (this.state === State.Menu) {
       if (this.menu.onKey(e)) e.preventDefault();
     } else if (this.state === State.Dead && e.code === 'Enter') {
@@ -393,6 +441,29 @@ export class Game {
     }
 
     if (this.paused && this.state === State.Playing) this.drawPaused();
+    if (this.debug) this.drawDevHint();
+  }
+
+  private drawDevHint(): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = "12px 'Consolas','Courier New',monospace";
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.globalAlpha = 0.8;
+
+    const base =
+      this.state === State.UpgradeSelect
+        ? 'DEV  ]  auto-pick  •  1/2/3 choose'
+        : 'DEV  ] skip floor  •  \\ god+slow';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillText(base, this.w - 14, this.h - 10);
+
+    if (this.debugGodMode) {
+      ctx.fillStyle = PALETTE.gold;
+      ctx.fillText('DEV  ★ GOD + 0.25× SLOW-MO', this.w - 14, this.h - 26);
+    }
+    ctx.restore();
   }
 
   private hudData(now: number): HudData {

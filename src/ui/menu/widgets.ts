@@ -57,9 +57,13 @@ export interface SliderOpts {
 export function slider(ctx: CanvasRenderingContext2D, ui: UiContext, o: SliderOpts): number {
   const hitH = 36;
   const r = { x: o.x, y: o.y - hitH / 2, w: o.w, h: hitH };
-  const { hover, focused } = ui.interact(o.id, r);
   let v = o.value;
+  // Resolve the drag BEFORE interact(): interact() claims a hovered press as a
+  // click (sets clickConsumed), which would prevent drag() from ever starting —
+  // leaving the slider stuck. Letting drag() go first lets the slider own the
+  // press as a drag; interact() then only registers the rect + reports hover.
   const dragging = ui.drag(o.id, r);
+  const { hover, focused } = ui.interact(o.id, r);
   if (dragging) {
     const t = clamp((ui.mouseX - o.x) / o.w, 0, 1);
     v = o.min + t * (o.max - o.min);

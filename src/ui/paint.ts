@@ -96,16 +96,29 @@ export function drawCard(
   }
 }
 
-/** The 2x3 hex key diagram centered at (cx, cy). */
+/** The 2x3 hex key diagram centered at (cx, cy). `keys` (optional) overrides the
+ *  default Q/W/E · A/S/D labels so the diagram reflects the player's current
+ *  bindings — layout is [[NW,N,NE],[SW,S,SE]]. */
 export function drawControls(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   hint?: string | null,
+  keys?: string[][],
 ): void {
+  const r0 = keys?.[0];
+  const r1 = keys?.[1];
   const layout: { key: string; dir: string }[][] = [
-    [{ key: 'Q', dir: DIR_NAMES[5] }, { key: 'W', dir: DIR_NAMES[0] }, { key: 'E', dir: DIR_NAMES[1] }],
-    [{ key: 'A', dir: DIR_NAMES[4] }, { key: 'S', dir: DIR_NAMES[3] }, { key: 'D', dir: DIR_NAMES[2] }],
+    [
+      { key: r0?.[0] ?? 'Q', dir: DIR_NAMES[5] },
+      { key: r0?.[1] ?? 'W', dir: DIR_NAMES[0] },
+      { key: r0?.[2] ?? 'E', dir: DIR_NAMES[1] },
+    ],
+    [
+      { key: r1?.[0] ?? 'A', dir: DIR_NAMES[4] },
+      { key: r1?.[1] ?? 'S', dir: DIR_NAMES[3] },
+      { key: r1?.[2] ?? 'D', dir: DIR_NAMES[2] },
+    ],
   ];
   const ks = 38;
   const gap = 8;

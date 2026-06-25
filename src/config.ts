@@ -9,6 +9,10 @@ export const CONFIG = {
 
   /** Snake / movement. */
   startLength: 3,
+  /** Hard floor on snake length. Shedding Season never drops the body below this
+   *  (a head needs at least one trailing segment), and regrowing up from it
+   *  resets the shed cadence for a full runway. */
+  minSnakeLength: 2,
   baseTickRate: 5, // ticks per second at depth 1 (lower = slower snake)
   tickRatePerDepth: 0.3,
   maxTickRate: 14,

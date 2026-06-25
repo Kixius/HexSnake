@@ -136,7 +136,7 @@ export const UPGRADES: readonly MutationDef[] = [
     id: 'acidic_trail',
     name: 'Acidic Trail',
     description:
-      'Your last 3 tail segments drip acid. Moving hazards that cross it are dissolved.',
+      'Leave a lingering acid wake behind you. Moving hazards that cross it are dissolved.',
     flavor: 'Your wake dissolves the unwary.',
     rarity: 'epic',
     maxStacks: 1,
@@ -175,7 +175,7 @@ export const UPGRADES: readonly MutationDef[] = [
     id: 'hydra_venom',
     name: "Hydra's Venom",
     description:
-      'One-time per run: crashing into a hazard severs your front half — control swaps to the tail half, now moving in reverse. (1 use)',
+      'One-time per run: crashing into a ROAMING obstacle severs your front half — the tail half becomes the new head, moving in reverse. (Walls, slime, and the arena edge still kill.)',
     flavor: 'Cut one head, another remains.',
     rarity: 'legendary',
     maxStacks: 1,

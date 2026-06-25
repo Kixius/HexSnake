@@ -150,18 +150,21 @@ export class Renderer {
     }
   }
 
-  // Acidic Trail: pulsing acid on the snake's trailing hexes (destroys hazards).
+  // Acidic Trail: the wake is brightest at the dripping tail tip and fades toward
+  // the trailing edge as each pool ages (acidFraction). Pools also shrink as they
+  // decay, so the wake tapers off behind the snake.
   private drawAcidicHexes(rs: RenderState): void {
     if (rs.snake.acidicHexes.size === 0) return;
     const ctx = this.ctx;
     const s = this.size;
     const pulse = 0.5 + 0.5 * Math.sin(rs.now / 200);
     for (const c of rs.grid.cells) {
-      if (!rs.snake.acidicHexes.has(hexKey(c))) continue;
+      const frac = rs.snake.acidFraction(hexKey(c));
+      if (frac <= 0) continue;
       const p = this.toScreen(c);
       ctx.save();
-      ctx.globalAlpha = 0.35 + 0.3 * pulse;
-      paintCircle(ctx, p.x, p.y, s * 0.44, PALETTE.acid);
+      ctx.globalAlpha = (0.16 + 0.52 * frac) * (0.7 + 0.3 * pulse);
+      paintCircle(ctx, p.x, p.y, s * (0.26 + 0.18 * frac), PALETTE.acid);
       ctx.restore();
     }
   }
@@ -334,8 +337,10 @@ export class Renderer {
 
   private drawEyes(x: number, y: number, heading: number, s: number): void {
     const ctx = this.ctx;
-    // eyes offset perpendicular to heading direction (flat-top angles)
-    const ang = (Math.PI / 3) * heading;
+    // Facing direction in screen space: heading 0 = North = straight up (-PI/2),
+    // rotating 60° (PI/3) clockwise per direction. Eyes sit along this forward
+    // vector (was missing the -PI/2 offset, so they appeared on the right side).
+    const ang = (Math.PI / 3) * heading - Math.PI / 2;
     const fx = Math.cos(ang);
     const fy = Math.sin(ang);
     const px = -fy; // perpendicular

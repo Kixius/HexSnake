@@ -37,8 +37,10 @@ export interface GameSnapshot {
   slipDurationMs: number;
   slipCooldownMs: number;
 
-  /** Acidic Trail: last tail segments leave acid that destroys moving obstacles. */
+  /** Acidic Trail: the snake leaves a decaying acid wake that dissolves roaming hazards. */
   acidicEnabled: boolean;
+  /** Acidic Trail: ticks an acid pool lingers on a vacated hex before it fades. */
+  acidicTrailTicks: number;
 
   /** Chitinous Shell: soak also shatters the struck in-bounds wall hex. */
   chitinousEnabled: boolean;
@@ -78,6 +80,7 @@ export function createSnapshot(): GameSnapshot {
     slipDurationMs: 2000,
     slipCooldownMs: 15000,
     acidicEnabled: false,
+    acidicTrailTicks: 8,
     chitinousEnabled: false,
     chitinCap: 2,
     sheddingEnabled: false,

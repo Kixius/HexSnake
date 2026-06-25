@@ -62,8 +62,17 @@ export class SnakeController {
   /** Shedding Season: hexes stepped this floor. */
   private hexesTraveled = 0;
 
-  /** Acidic Trail: hex keys of the last ≤3 tail segments (destroys moving obstacles). */
+  /** Acidic Trail: hex keys currently coated in acid (the lingering wake + the
+   *  dripping tail tip). Read by Renderer and stepObstacles; rebuilt each step
+   *  from `acidTtl`. */
   acidicHexes: ReadonlySet<string> = new Set();
+  /** Acidic Trail: hexKey → ticks remaining before that acid pool fades. The tail
+   *  tip re-seeds a fresh pool each step; once the tail recedes off a hex, that
+   *  pool is left behind as the wake and just decays until it hits 0. */
+  private acidTtl = new Map<string, number>();
+  /** Acidic Trail: the seed TTL (== snap.acidicTrailTicks while enabled); denominates
+   *  `acidFraction`. 0 when the card is off. */
+  private acidTtlMax = 0;
 
   constructor(spawn: Hex, heading: Direction, snap: GameSnapshot) {
     this.heading = heading;
@@ -86,6 +95,7 @@ export class SnakeController {
     this.slipUntil = 0;
     this.slipReadyAt = 0;
     this.hexesTraveled = 0;
+    this.acidTtl.clear();
     this.acidicHexes = new Set();
   }
 
@@ -259,8 +269,11 @@ export class SnakeController {
     }
 
     // (2) Moving obstacle at the target cell — Hydra's Venom can sever & survive once.
+    // Walls, slime, and the arena edge are NOT "obstacles": they're handled above/below
+    // and Hydra never covers them. Length gate is the true minimum for a valid split
+    // (the reversed tail half needs a head + neck); hydraSplit no-ops gracefully below it.
     if (obstacles.some((o) => equals(o.hex, newHead))) {
-      if (snap.hydraEnabled && !snap.hydraUsed && this.segments.length >= 4) {
+      if (snap.hydraEnabled && !snap.hydraUsed && this.segments.length >= 3) {
         this.hydraSplit(snap, result);
         return result;
       }
@@ -271,6 +284,7 @@ export class SnakeController {
     // Commit the turn + advance.
     this.heading = newHeading;
     this.prevSegments = this.segments.map(clone);
+    const lenBefore = this.segments.length;
     this.segments.unshift(newHead);
     this.hexesTraveled++;
 
@@ -320,14 +334,21 @@ export class SnakeController {
       this.health -= CONFIG.slimeDamage;
     }
 
-    // Tail: grow vs recede. Shedding Season drops an extra segment on a cadence.
+    // Tail: grow vs recede. Shedding Season drops an extra segment on a cadence,
+    // but never below the minimum length. Regrowing up from that minimum resets
+    // the cadence so the player gets a full sheddingInterval-hex runway before
+    // the next shed — otherwise the counter that kept ticking while pinned at the
+    // minimum could fire immediately after growing.
     if (this.growPending > 0) {
       this.growPending--;
+      if (snap.sheddingEnabled && lenBefore <= CONFIG.minSnakeLength) {
+        this.hexesTraveled = 0;
+      }
     } else {
       this.segments.pop();
       if (
         snap.sheddingEnabled &&
-        this.segments.length > 1 &&
+        this.segments.length > CONFIG.minSnakeLength &&
         this.hexesTraveled % snap.sheddingInterval === 0
       ) {
         this.segments.pop();
@@ -440,11 +461,34 @@ export class SnakeController {
   }
 
   private refreshAcidicHexes(snap: GameSnapshot): void {
-    if (snap.acidicEnabled && this.segments.length > 0) {
-      this.acidicHexes = new Set(this.segments.slice(-3).map(hexKey));
-    } else {
+    if (!snap.acidicEnabled || this.segments.length === 0) {
+      if (this.acidTtl.size > 0) this.acidTtl.clear();
+      this.acidTtlMax = 0;
       this.acidicHexes = new Set();
+      return;
     }
+    this.acidTtlMax = snap.acidicTrailTicks;
+    // Age every pool by one tick; drop the ones that have faded. (Only called on
+    // steps where the head actually advances, so a paused snake keeps its wake.)
+    for (const key of [...this.acidTtl.keys()]) {
+      const next = (this.acidTtl.get(key) ?? 0) - 1;
+      if (next <= 0) this.acidTtl.delete(key);
+      else this.acidTtl.set(key, next);
+    }
+    // The rearmost segment drips a fresh pool. Next step the tail recedes off it,
+    // leaving it behind as the wake — that lingering acid is what dissolves
+    // roaming hazards (which never step onto the snake's own occupied cells).
+    const tip = this.segments[this.segments.length - 1];
+    if (tip) this.acidTtl.set(hexKey(tip), snap.acidicTrailTicks);
+    this.acidicHexes = new Set(this.acidTtl.keys());
+  }
+
+  /** Acidic Trail: 0..1 intensity of the pool on `key` (0 = none). A freshly dripped
+   *  pool is 1; a pool about to fade approaches 0 — drives the Renderer's wake fade. */
+  acidFraction(key: string): number {
+    const ttl = this.acidTtl.get(key);
+    if (ttl === undefined || this.acidTtlMax <= 0) return 0;
+    return ttl / this.acidTtlMax;
   }
 
   /** Resolve a death reason into a palette color for the death flash. */
