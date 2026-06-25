@@ -54,6 +54,23 @@ export class Game {
   private choices: MutationDef[] = [];
   private runSummary: RunSummary | null = null;
 
+  /** Upgrade-select: card index under the pointer (-1 = none). */
+  private hoveredCard = -1;
+  /** Upgrade-select: active pick animation; the choice applies once it elapses. */
+  private pickAnim: { index: number; start: number } | null = null;
+  private readonly pickAnimMs = 240;
+
+  /** perf.now timestamp the last life-loss revive began; drives the respawn flash. */
+  private respawnFlashAt = 0;
+  private readonly respawnFlashMs = 700;
+
+  /** Run-ending death cinematic: a slow eased zoom into the death point, then the
+   *  "YOU DIED" overlay fades/slides in on top. */
+  private deathStartedAt = 0;
+  private readonly deathZoomMs = 950; // slow-mo zoom duration
+  private readonly deathZoomTo = 1.14; // minimal zoom-in factor
+  private readonly deathRevealMs = 1700; // total UI reveal duration
+
   /** Dev-only cheats. Statically false in production builds (import.meta.env.DEV),
    *  so the debug branches are dead code in `tauri build` / `vite build`. */
   private readonly debug = import.meta.env.DEV;
@@ -123,17 +140,23 @@ export class Game {
       this.menu.onPointerDown(p.x, p.y);
     });
     this.canvas.addEventListener('pointermove', (e) => {
-      if (this.state !== State.Menu) return;
-      const rect = this.canvas.getBoundingClientRect();
-      this.menu.onPointerMove(e.clientX - rect.left, e.clientY - rect.top, true);
+      const p = this.canvasPos(e);
+      if (this.state === State.Menu) {
+        this.menu.onPointerMove(p.x, p.y, true);
+      } else if (this.state === State.UpgradeSelect) {
+        this.hoveredCard = this.overlays.hitTestCard(p.x, p.y) ?? -1;
+      }
     });
     this.canvas.addEventListener('pointerup', () => {
       if (this.state !== State.Menu) return;
       this.menu.onPointerUp();
     });
     this.canvas.addEventListener('pointerleave', () => {
-      if (this.state !== State.Menu) return;
-      this.menu.onPointerMove(0, 0, false);
+      if (this.state === State.Menu) {
+        this.menu.onPointerMove(0, 0, false);
+      } else if (this.state === State.UpgradeSelect) {
+        this.hoveredCard = -1;
+      }
     });
     requestAnimationFrame(this.loop);
   }
@@ -157,10 +180,13 @@ export class Game {
   // ---- the loop ----
 
   private tickDt(): number {
-    const rate = Math.min(
+    const base = Math.min(
       CONFIG.maxTickRate,
       (CONFIG.baseTickRate + CONFIG.tickRatePerDepth * (this.depth - 1)) * this.snap.speedMult,
     );
+    // Spore: each consumed pellet permanently slows the snake (multiplicative).
+    const slow = Math.pow(1 - CONFIG.sporeSlowPerStack, this.snap.sporeStacks);
+    const rate = base * slow;
     const dt = 1000 / rate;
     // Slow-mo: a larger dt per tick => fewer ticks fire => 0.25× real time.
     return this.debugGodMode ? dt / this.debugTimeScale : dt;
@@ -170,6 +196,9 @@ export class Game {
     if (this.lastNow === 0) this.lastNow = now;
     const frame = Math.min(now - this.lastNow, CONFIG.maxFrameMs);
     this.lastNow = now;
+
+    // Resolve the upgrade-pick animation on its own clock (the sim is paused here).
+    if (this.state === State.UpgradeSelect) this.finalizePick(now);
 
     if (document.hidden || this.paused || this.state !== State.Playing) {
       // Frozen states still render (overlays, death, upgrade cards); no interpolation.
@@ -237,6 +266,11 @@ export class Game {
         this.portalActive = true;
       }
     }
+    if (res.ateSpore) {
+      // Spore: grants a permanent multiplicative slow for the rest of the run (a buff).
+      // Routed through UpgradeSystem so it stays the sole GameSnapshot writer.
+      this.upgrades.applySpore(this.snap);
+    }
     if (res.ateCore) {
       this.score += Math.round(CONFIG.scorePerCore * this.snap.scoreMult);
       this.openUpgradeSelect();
@@ -253,7 +287,7 @@ export class Game {
         // just swallow the death and keep ticking. Steering clears wall/self bumps.
         res.died = null;
       } else {
-        this.onDeath(res.died);
+        this.onDeath(res.died, now);
         return;
       }
     }
@@ -283,6 +317,7 @@ export class Game {
     this.snap = createSnapshot();
     this.upgrades = new UpgradeSystem();
     this.runSummary = null;
+    this.deathStartedAt = 0;
     this.menu.reset();
     this.beginFloor();
     this.state = State.Playing;
@@ -323,6 +358,8 @@ export class Game {
 
   private openUpgradeSelect(): void {
     this.choices = this.upgrades.rollThree();
+    this.hoveredCard = -1;
+    this.pickAnim = null;
     this.state = State.UpgradeSelect;
   }
 
@@ -347,7 +384,32 @@ export class Game {
     this.state = State.Playing;
   }
 
-  private onDeath(reason: DeathReason): void {
+  /** Begin the pick animation for `index` (hover/choose effect). The actual
+   *  upgrade is applied by finalizePick() when the animation elapses; repeated
+   *  calls while animating are ignored. */
+  private requestPick(index: number): void {
+    if (this.state !== State.UpgradeSelect || this.pickAnim) return;
+    if (!this.choices[index]) return;
+    this.pickAnim = { index, start: performance.now() };
+  }
+
+  /** Apply the animated pick once its timer is up. Called from the loop each frame. */
+  private finalizePick(now: number): void {
+    if (!this.pickAnim || now - this.pickAnim.start < this.pickAnimMs) return;
+    const idx = this.pickAnim.index;
+    this.pickAnim = null;
+    this.pickUpgrade(idx);
+  }
+
+  private onDeath(reason: DeathReason, now: number): void {
+    // A spare life revives you on the current floor (essence progress kept).
+    // Only a death with no lives left ends the run.
+    if (this.snap.lives > 0) {
+      this.snap.lives -= 1;
+      this.respawn(now);
+      return;
+    }
+    this.deathStartedAt = now; // begin the death cinematic (zoom + slow UI reveal)
     this.runSummary = {
       depth: this.depth,
       score: this.score,
@@ -356,6 +418,22 @@ export class Game {
       reason,
     };
     this.state = State.Dead;
+  }
+
+  /** Revive on the current floor: snake back to spawn in launch state, per-floor
+   *  resources refilled, but essence progress + portal status KEPT (resume from
+   *  the middle — already-eaten essence stays eaten). The floor layout, slime, and
+   *  roaming obstacles are left as-is. */
+  private respawn(now: number): void {
+    const floor = this.floor;
+    const snake = this.snake;
+    if (!floor || !snake) return;
+    snake.reposition(floor.spawn, 2); // SE heading, same as floor launch
+    snake.health = this.snap.maxHealth; // death (often slime) tapped this; restore
+    this.input.resetFloor(); // drop any direction mashed into the death
+    this.accumulator = 0; // don't burst-catch-up across the respawn
+    this.respawnFlashAt = now;
+    // state stays Playing; snake.started is false so it waits for a fresh steer.
   }
 
   // ---- input ----
@@ -391,9 +469,9 @@ export class Game {
       this.state = State.Menu;
       e.preventDefault();
     } else if (this.state === State.UpgradeSelect) {
-      if (e.code === 'Digit1') this.pickUpgrade(0);
-      else if (e.code === 'Digit2') this.pickUpgrade(1);
-      else if (e.code === 'Digit3') this.pickUpgrade(2);
+      if (e.code === 'Digit1') this.requestPick(0);
+      else if (e.code === 'Digit2') this.requestPick(1);
+      else if (e.code === 'Digit3') this.requestPick(2);
     } else if (this.state === State.Playing && e.code === settingsStore.current.keybinds.pause) {
       this.paused = !this.paused;
       e.preventDefault();
@@ -402,11 +480,9 @@ export class Game {
 
   private onClick(e: MouseEvent): void {
     if (this.state !== State.UpgradeSelect) return;
-    const rect = this.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const idx = this.overlays.hitTestCard(x, y);
-    if (idx !== null) this.pickUpgrade(idx);
+    const p = this.canvasPos(e);
+    const idx = this.overlays.hitTestCard(p.x, p.y);
+    if (idx !== null) this.requestPick(idx);
   }
 
   // ---- render ----
@@ -422,26 +498,73 @@ export class Game {
     }
 
     if (this.floor && this.snake) {
+      const snake = this.snake;
+      ctx.save();
+      // Run-ending death cinematic: ease a minimal zoom INTO the death point
+      // (the snake head) in slow motion. Only the world zooms — the HUD and the
+      // death overlay below stay in screen space.
+      if (this.state === State.Dead) {
+        const t = clamp01((now - this.deathStartedAt) / this.deathZoomMs);
+        const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic → slow settle
+        const scale = 1 + (this.deathZoomTo - 1) * eased;
+        const hp = this.renderer.toScreen(snake.head);
+        ctx.translate(hp.x, hp.y);
+        ctx.scale(scale, scale);
+        ctx.translate(-hp.x, -hp.y);
+      }
       this.renderer.render({
         grid: this.floor.grid,
-        snake: this.snake,
+        snake,
         obstacles: this.floor.obstacles,
         snap: this.snap,
         now,
         alpha,
         portalActive: this.portalActive,
       });
+      ctx.restore();
       this.hud.draw(ctx, this.w, this.h, this.hudData(now));
     }
 
     if (this.state === State.UpgradeSelect) {
-      this.overlays.drawUpgradeSelect(this.choices);
+      const pick = this.pickAnim
+        ? {
+            index: this.pickAnim.index,
+            frac: Math.min(1, (now - this.pickAnim.start) / this.pickAnimMs),
+          }
+        : null;
+      this.overlays.drawUpgradeSelect(this.choices, { hover: this.hoveredCard, pick });
     } else if (this.state === State.Dead && this.runSummary) {
-      this.overlays.drawDeath(this.runSummary);
+      const reveal = clamp01((now - this.deathStartedAt) / this.deathRevealMs);
+      this.overlays.drawDeath(this.runSummary, reveal);
     }
 
     if (this.paused && this.state === State.Playing) this.drawPaused();
+    if (this.state === State.Playing) this.drawRespawnFlash(now);
     if (this.debug) this.drawDevHint();
+  }
+
+  /** Fading red "−1 LIFE / respawning" overlay shown right after a life-loss revive. */
+  private drawRespawnFlash(now: number): void {
+    const elapsed = now - this.respawnFlashAt;
+    if (this.respawnFlashAt === 0 || elapsed < 0 || elapsed >= this.respawnFlashMs) return;
+    const frac = 1 - elapsed / this.respawnFlashMs; // 1 → 0
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = `rgba(239, 68, 68, ${0.30 * frac})`;
+    ctx.fillRect(0, 0, this.w, this.h);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = frac;
+    ctx.fillStyle = PALETTE.danger;
+    ctx.font = "bold 46px 'Consolas','Courier New',monospace";
+    ctx.shadowColor = PALETTE.dangerGlow;
+    ctx.shadowBlur = 18;
+    ctx.fillText('−1 LIFE', this.w / 2, this.h / 2 - 16);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = PALETTE.text;
+    ctx.font = "18px 'Consolas','Courier New',monospace";
+    ctx.fillText('reviving on this floor', this.w / 2, this.h / 2 + 24);
+    ctx.restore();
   }
 
   private drawDevHint(): void {
@@ -476,8 +599,10 @@ export class Game {
       essenceCollected: this.essenceCollected,
       essenceNeeded: floor?.essenceNeeded ?? 0,
       portalActive: this.portalActive,
-      health: snake?.health ?? 1,
-      maxHealth: this.snap.maxHealth,
+      lives: this.snap.lives,
+      sporeStacks: this.snap.sporeStacks,
+      armor: snake ? snake.wallChargesRemaining(this.snap) : 0,
+      maxArmor: this.snap.wallCharges,
       mutations: this.upgrades.active,
       phase: snake ? snake.phaseState(this.snap, now) : {
         enabled: false,
@@ -510,4 +635,9 @@ export class Game {
     ctx.fillText('press P to resume', this.w / 2, this.h / 2 + 36);
     ctx.textAlign = 'left';
   }
+}
+
+/** Clamp to [0, 1] — used by the death-cinematic timing (zoom + UI reveal). */
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }

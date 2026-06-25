@@ -47,14 +47,27 @@ export function wrapText(
   return ly; // last baseline drawn (for chaining)
 }
 
-/** Draw a mutation card into `box`. `index` adds the "[ n ]" pick badge. */
+/** Draw a mutation card into `box`. `index` adds the "[ n ]" pick badge.
+ *  `opts.glow` adds a colored halo (rarity color) behind the card for hover/pick. */
 export function drawCard(
   ctx: CanvasRenderingContext2D,
   box: CardBox,
   def: MutationDef,
   index?: number,
+  opts?: { glow?: number },
 ): void {
   const color = rarityColor(def.rarity);
+  // Opaque shadow caster so the halo is full-strength (the normal bg is translucent
+  // and would cast a faint shadow); drawn under the real bg, then shadow is dropped
+  // so the band/stroke/text below don't inherit the glow.
+  if (opts?.glow && opts.glow > 0) {
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = opts.glow;
+    ctx.fillStyle = '#0b0f16';
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.restore();
+  }
   ctx.fillStyle = '#12182250';
   ctx.fillRect(box.x, box.y, box.w, box.h);
   // rarity top band

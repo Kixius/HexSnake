@@ -81,6 +81,18 @@ export const UPGRADES: readonly MutationDef[] = [
       snap.essenceReduction += 2;
     },
   },
+  {
+    id: 'auxiliary_heart',
+    name: 'Auxiliary Heart',
+    description:
+      '+1 Life. Each life revives you on the current floor when you die, keeping your essence progress.',
+    flavor: 'A spare pulse, kept in reserve.',
+    rarity: 'common',
+    maxStacks: 3,
+    apply: (snap) => {
+      snap.lives += 1;
+    },
+  },
 
   // ---- RARE (hex & grid manipulators) ----
   {
@@ -155,6 +167,17 @@ export const UPGRADES: readonly MutationDef[] = [
     apply: (snap) => {
       snap.scoreMult = Math.min(SCORE_MULT_CAP, snap.scoreMult + 2);
       snap.growthPerFood += 1;
+    },
+  },
+  {
+    id: 'regenerative_bloom',
+    name: 'Regenerative Bloom',
+    description: '+2 Lives. Cheat death twice more — each revive drops you back on the current floor.',
+    flavor: 'Where one falls, two rise.',
+    rarity: 'epic',
+    maxStacks: 1,
+    apply: (snap) => {
+      snap.lives += 2;
     },
   },
 

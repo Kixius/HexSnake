@@ -77,6 +77,7 @@ export class Renderer {
     this.drawWallsAndSlime(rs);
     this.drawAcidicHexes(rs);
     this.drawEssence(rs);
+    this.drawSpore(rs);
     this.drawCore(rs);
     if (rs.portalActive) this.drawPortal(rs);
     this.drawObstacles(rs);
@@ -182,6 +183,33 @@ export class Renderer {
       if (rs.grid.occupantOf(c) !== Occupant.Essence) continue;
       const p = this.toScreen(c);
       paintCircle(ctx, p.x, p.y, s * (0.3 + 0.05 * pulse), PALETTE.essence);
+    }
+    ctx.restore();
+  }
+
+  // ---- spore (calming slow pellet — a beneficial pickup, not a hazard) ----
+
+  private drawSpore(rs: RenderState): void {
+    const ctx = this.ctx;
+    const s = this.size;
+    // Slow, calm breathing + a gentle float — reads as a soft collectible, not an alarm.
+    const breath = 0.5 + 0.5 * Math.sin(rs.now / 520);
+    const bob = Math.sin(rs.now / 460) * s * 0.05;
+    ctx.save();
+    ctx.shadowColor = PALETTE.sporeGlow;
+    ctx.shadowBlur = 10 + 5 * breath;
+    for (const c of rs.grid.cells) {
+      if (rs.grid.occupantOf(c) !== Occupant.Spore) continue;
+      const p = this.toScreen(c);
+      const r = s * (0.30 + 0.035 * breath);
+      // Downward triangle = "slow / brake". Distinct from the round essence pellet.
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + r + bob);
+      ctx.lineTo(p.x - r * 0.92, p.y - r * 0.66 + bob);
+      ctx.lineTo(p.x + r * 0.92, p.y - r * 0.66 + bob);
+      ctx.closePath();
+      ctx.fillStyle = PALETTE.spore;
+      ctx.fill();
     }
     ctx.restore();
   }

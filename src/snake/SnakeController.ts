@@ -225,6 +225,7 @@ export class SnakeController {
       ateCore: false,
       reachedPortal: false,
       onSlime: false,
+      ateSpore: false,
       wallSoaked: false,
       wallBroken: false,
       hydraSplit: false,
@@ -325,6 +326,10 @@ export class SnakeController {
       this.growPending += snap.growthPerFood;
     } else if (occ === Occupant.ChamberCore) {
       result.ateCore = true;
+      grid.clear(newHead);
+    } else if (occ === Occupant.Spore) {
+      // Spore: collected on contact (no growth, no score). Game applies the slow buff.
+      result.ateSpore = true;
       grid.clear(newHead);
     } else if (occ === Occupant.Portal) {
       result.reachedPortal = true;

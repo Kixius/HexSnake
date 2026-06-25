@@ -13,6 +13,9 @@ export enum Occupant {
   Essence = 3,
   ChamberCore = 4,
   Portal = 5,
+  /** Spore pellet: a beneficial pickup — collecting it permanently slows the snake
+   *  (a *buff*). Not required to advance; passable (not a wall). */
+  Spore = 6,
 }
 
 export interface MovingObstacle {
@@ -30,6 +33,8 @@ export interface StepResult {
   ateCore: boolean;
   reachedPortal: boolean;
   onSlime: boolean;
+  /** Consumed a spore pellet this step (Game applies the permanent slow). */
+  ateSpore: boolean;
   /** A wall/bounds charge was consumed this step (move cancelled). */
   wallSoaked: boolean;
   /** Chitinous Shell shattered the struck wall hex into open space (VFX hook). */

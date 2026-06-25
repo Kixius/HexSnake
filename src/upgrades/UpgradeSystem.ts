@@ -57,6 +57,15 @@ export class UpgradeSystem {
     snap.scoreMult = 1;
   }
 
+  /**
+   * Consuming a spore pellet adds a permanent slow stack. Routed through
+   * UpgradeSystem to keep it the sole GameSnapshot writer (see CLAUDE.md seam
+   * rule); tickDt turns the stack count into the actual speed factor.
+   */
+  applySpore(snap: GameSnapshot): void {
+    snap.sporeStacks += 1;
+  }
+
   /** Summary entries for the death screen. */
   buildSummary(): { name: string; stacks: number }[] {
     return this.active.map((a) => ({ name: a.def.name, stacks: a.stacks }));

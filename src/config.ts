@@ -40,9 +40,19 @@ export const CONFIG = {
    *  free of walls/slime, so the snake always has an escape route after eating. */
   chamberCoreMinEscapeHexes: 2,
 
-  /** Health / damage. */
+  /** Spore: a green pellet that grants a permanent 5% slow per collect (multiplicative).
+   *  A *buff* — the snake speeds up each floor, so slowing gives more reaction time.
+   *  Not required to advance; rare; first appears on floor `sporeStartDepth` (3 = after floor 2). */
+  sporeStartDepth: 3,
+  sporeChance: 0.4,
+  sporeSlowPerStack: 0.05,
+
+  /** Health / damage / lives. */
   startHealth: 1,
   slimeDamage: 1,
+  /** Lives per run. Each death (while you have a spare) respawns you on the
+   *  current floor with essence progress kept; running out ends the run. */
+  startLives: 3,
 
   /** Loop safety. */
   maxFrameMs: 250,
@@ -90,6 +100,10 @@ export interface Palette {
   /** Glow color used behind moving obstacles. */
   obstacleGlow: string;
 
+  /** Spore pellet (green downward triangle) — a beneficial pickup that grants a permanent slow. */
+  spore: string;
+  sporeGlow: string;
+
   text: string;
   textDim: string;
   teal: string;
@@ -130,6 +144,9 @@ export const PALETTE: Palette = {
   obstacle: '#f97316',
   obstacleEdge: '#fdba74',
   obstacleGlow: 'rgba(249, 115, 22, 0.5)',
+
+  spore: '#22c55e',
+  sporeGlow: 'rgba(34, 197, 94, 0.5)',
 
   text: '#e6edf3',
   textDim: '#8b97a7',

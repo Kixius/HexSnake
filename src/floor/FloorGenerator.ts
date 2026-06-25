@@ -76,6 +76,12 @@ export class FloorGenerator {
       }
     }
 
+    // (4b) Spore — a rare, beneficial slow-pickup from floor `sporeStartDepth`.
+    //      Not required to advance; collecting one permanently slows the snake (a buff).
+    if (depth >= CONFIG.sporeStartDepth && Math.random() < CONFIG.sporeChance) {
+      placeRandom(grid, spawn, safe, 1, Occupant.Spore);
+    }
+
     // (5) Moving obstacles (not grid occupants — tracked on the Floor).
     const moverCount = Math.floor(CONFIG.obstacleBase + CONFIG.obstaclePerDepth * (depth - 1));
     const obstacles: MovingObstacle[] = [];

@@ -17,6 +17,9 @@ export interface GameSnapshot {
   maxHealth: number;
   /** Wall/bounds soak charges (Chitinous Shell) — separate from health. */
   wallCharges: number;
+  /** Spare lives. Each death while this is > 0 revives you on the current floor
+   *  (essence progress kept); a death at 0 ends the run. Life cards add to this. */
+  lives: number;
 
   /** Score multiplier. Apex Predator resets this to 1 via UpgradeSystem.resetMultiplier. */
   scoreMult: number;
@@ -63,12 +66,17 @@ export interface GameSnapshot {
 
   /** Sense radius for revealing Chamber Cores from afar (no card sets this now; default 0). */
   radarRadius: number;
+
+  /** Spore pellets consumed this run. Each adds a permanent multiplicative slow
+   *  (Math.pow(1 - sporeSlowPerStack, sporeStacks)) applied in tickDt. */
+  sporeStacks: number;
 }
 
 export function createSnapshot(): GameSnapshot {
   return {
     maxHealth: CONFIG.startHealth,
     wallCharges: 0,
+    lives: CONFIG.startLives,
     scoreMult: 1,
     growthPerFood: CONFIG.growthPerFoodBase,
     speedMult: 1,
@@ -91,5 +99,6 @@ export function createSnapshot(): GameSnapshot {
     hydraUsed: false,
     apexEnabled: false,
     radarRadius: 0,
+    sporeStacks: 0,
   };
 }

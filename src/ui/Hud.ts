@@ -1,4 +1,4 @@
-import { PALETTE } from '../config';
+import { CONFIG, PALETTE } from '../config';
 import type { ActiveMutation } from '../upgrades/UpgradeSystem';
 import { rarityColor } from '../upgrades/registry';
 import type { PhaseState } from '../snake/SnakeController';
@@ -10,8 +10,15 @@ export interface HudData {
   essenceCollected: number;
   essenceNeeded: number;
   portalActive: boolean;
-  health: number;
-  maxHealth: number;
+  /** Spare lives — each revives you on the current floor when you die. */
+  lives: number;
+  /** Spore pellets collected this run — each grants a permanent 5% slow (a *buff*:
+   *  the snake speeds up every floor, so slowing gives more reaction time). */
+  sporeStacks: number;
+  /** Chitinous Shell armor charges left this floor (0 if no armor card). */
+  armor: number;
+  /** Per-floor armor refill amount (snap.wallCharges); 0 hides the counter. */
+  maxArmor: number;
   mutations: ActiveMutation[];
   phase: PhaseState;
   slip: PhaseState;
@@ -39,11 +46,15 @@ export class Hud {
     ctx.fillStyle = PALETTE.gold;
     ctx.fillText(`SCORE ${d.score}`, 110, 50);
 
-    // Health pips.
-    this.drawHealth(ctx, 20, 74, d.health, d.maxHealth);
+    // Lives pips — the red-dot counter. Filled = spare lives, empty = lives lost.
+    this.drawLives(ctx, 20, 74, d.lives);
+    // Armor charges (Chitinous Shell) — only when the player actually has armor.
+    if (d.maxArmor > 0) this.drawArmor(ctx, 20, 98, d.armor, d.maxArmor);
 
     // Top-right: essence progress / portal status.
     this.drawProgress(ctx, w, d);
+    // Spore slow buff collected this run (right side, under the bar).
+    if (d.sporeStacks > 0) this.drawSpore(ctx, w, d.sporeStacks);
 
     // Bottom-left: active mutations.
     this.drawMutations(ctx, d.mutations);
@@ -55,23 +66,74 @@ export class Hud {
     ctx.restore();
   }
 
-  private drawHealth(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    health: number,
-    max: number,
-  ): void {
+  /** Lives counter: filled red dots = spare lives remaining, hollow dots = lives
+   *  lost (up to the starting 3, growing if life cards push past it). At 0 lives
+   *  you're on your final life — the next death ends the run — so a pulsing
+   *  "FINAL LIFE" warning is shown. */
+  private drawLives(ctx: CanvasRenderingContext2D, x: number, y: number, lives: number): void {
     const r = 7;
-    for (let i = 0; i < max; i++) {
+    const slots = Math.max(CONFIG.startLives, lives);
+    for (let i = 0; i < slots; i++) {
       ctx.beginPath();
       ctx.arc(x + 8 + i * 22, y + 8, r, 0, Math.PI * 2);
-      ctx.fillStyle = i < health ? PALETTE.danger : PALETTE.wallEdge;
+      ctx.fillStyle = i < lives ? PALETTE.danger : PALETTE.wallEdge;
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = PALETTE.textDim;
       ctx.stroke();
     }
+    if (lives <= 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+      ctx.save();
+      ctx.globalAlpha = 0.55 + 0.45 * pulse;
+      ctx.fillStyle = PALETTE.danger;
+      ctx.font = `bold 13px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FINAL LIFE', x + 8 + slots * 22 + 10, y + 8);
+      ctx.restore();
+    }
+  }
+
+  /** Chitinous Shell armor: a shield glyph + "ARMOR current/max". */
+  private drawArmor(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    armor: number,
+    max: number,
+  ): void {
+    const cy = y + 9;
+    ctx.save();
+    this.drawShield(ctx, x + 9, cy, 8, armor > 0);
+    ctx.font = `15px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = armor > 0 ? PALETTE.text : PALETTE.textDim;
+    ctx.fillText(`ARMOR ${armor}/${max}`, x + 24, cy);
+    ctx.restore();
+  }
+
+  private drawShield(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    r: number,
+    filled: boolean,
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r, cy - r * 0.35);
+    ctx.lineTo(cx + r * 0.78, cy + r * 0.7);
+    ctx.lineTo(cx, cy + r);
+    ctx.lineTo(cx - r * 0.78, cy + r * 0.7);
+    ctx.lineTo(cx - r, cy - r * 0.35);
+    ctx.closePath();
+    ctx.fillStyle = filled ? PALETTE.teal : PALETTE.wallEdge;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = PALETTE.textDim;
+    ctx.stroke();
   }
 
   private drawProgress(ctx: CanvasRenderingContext2D, w: number, d: HudData): void {
@@ -99,6 +161,33 @@ export class Hud {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = PALETTE.gridEdge;
     ctx.strokeRect(x, by, barW, 12);
+  }
+
+  /** Spore slow buff: a green "slow" triangle + "SLOW ×N", under the bar. A gentle
+   *  pulse marks it as an active, beneficial effect the player has collected. */
+  private drawSpore(ctx: CanvasRenderingContext2D, w: number, stacks: number): void {
+    const x = w - 20;
+    const y = 74;
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 300);
+    ctx.save();
+    ctx.globalAlpha = 0.8 + 0.2 * pulse;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = `14px ${FONT}`;
+    const label = `SLOW ×${stacks}`;
+    ctx.fillStyle = PALETTE.spore;
+    ctx.fillText(label, x, y);
+    // Downward "slow" triangle icon just left of the label, matching the world pellets.
+    const tw = ctx.measureText(label).width;
+    const ix = x - tw - 13;
+    const r = 5;
+    ctx.beginPath();
+    ctx.moveTo(ix, y + r);
+    ctx.lineTo(ix - r * 0.92, y - r * 0.66);
+    ctx.lineTo(ix + r * 0.92, y - r * 0.66);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawMutations(ctx: CanvasRenderingContext2D, muts: ActiveMutation[]): void {

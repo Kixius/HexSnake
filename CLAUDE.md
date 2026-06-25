@@ -102,6 +102,14 @@ offers 3 weighted-distinct choices on floor-clear and chamber-core-consume.
   **Hydra's Venom** (1×/run) survives an obstacle hit by severing the front half — the
   tail half reverses to become the new head (heading derived neck→head so it moves
   *outward*, never into its own neck).
+- **Death isn't always run-end — `GameSnapshot.lives` (default `CONFIG.startLives` = 3).**
+  A true death (wall/obstacle/self/slime) with `lives > 0` instead *revives*: `onDeath`
+  decrements a life and `respawn()` repositions the snake to the floor spawn in launch
+  state, refills health/armor/phase/slip, and plays a red flash — but **keeps the same
+  floor** (layout, slime, roaming obstacles, already-eaten essence) and the `essenceCollected`
+  /`portalActive` progress ("resume from the middle"). Only a death at `lives == 0` ends the
+  run. **Auxiliary Heart** (common, maxStacks 3) and **Regenerative Bloom** (epic, maxStacks 1)
+  add lives. Card-resolved survivals (Chitinous/Phase/Apex/Ouroboros/Hydra) never touch lives.
 - **Collision resolution order in `SnakeController.step`** is fixed, first-match-wins:
   bounds/wall (→ active **Diagonal Slip** deflects along a placed wall, else Chitinous
   soak+shatter, else die) → moving obstacle (→ **Hydra** split or die) → commit move →
@@ -127,6 +135,14 @@ offers 3 weighted-distinct choices on floor-clear and chamber-core-consume.
   hexes behind it can ever dissolve a roaming hazard. The old tail-melting Acid Trail
   (and the brief "last 3 segments" version that slid with the tail and never lingered)
   were removed when the card was repurposed.
+- **Spore is a beneficial pickup — a permanent slow is a *buff* here** (the snake
+  speeds up every floor, so slowing it buys reaction time). A green downward-triangle
+  pellet (`Occupant.Spore`, passable) spawns rarely from floor `CONFIG.sporeStartDepth`
+  (3); it's never required to advance. Collecting one consumes it (no growth/score,
+  `StepResult.ateSpore`) and adds a **permanent multiplicative slow** for the run via
+  `UpgradeSystem.applySpore` → `snap.sporeStacks`. `Game.tickDt` folds it in as
+  `rate *= Math.pow(1 - sporeSlowPerStack, sporeStacks)` (5% each, default) — this is
+  a third `GameSnapshot` writer path, routed through `UpgradeSystem` to honor the seam.
 
 ## Procedural floors
 
