@@ -66,10 +66,10 @@ export class Hud {
     ctx.restore();
   }
 
-  /** Lives counter: filled red dots = spare lives remaining, hollow dots = lives
-   *  lost (up to the starting 3, growing if life cards push past it). At 0 lives
-   *  you're on your final life — the next death ends the run — so a pulsing
-   *  "FINAL LIFE" warning is shown. */
+  /** Lives counter: filled red dots = lives remaining (counting the life you're
+   *  on), hollow dots = lives lost (up to the starting 3, growing if life cards
+   *  push past it). At 1 life you're on your final life — the next death ends the
+   *  run — so a pulsing "FINAL LIFE" warning is shown. */
   private drawLives(ctx: CanvasRenderingContext2D, x: number, y: number, lives: number): void {
     const r = 7;
     const slots = Math.max(CONFIG.startLives, lives);
@@ -82,7 +82,7 @@ export class Hud {
       ctx.strokeStyle = PALETTE.textDim;
       ctx.stroke();
     }
-    if (lives <= 0) {
+    if (lives <= 1) {
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
       ctx.save();
       ctx.globalAlpha = 0.55 + 0.45 * pulse;

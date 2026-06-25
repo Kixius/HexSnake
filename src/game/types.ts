@@ -50,6 +50,10 @@ export interface StepResult {
 }
 
 export interface RunSummary {
+  /** True when the run was voluntarily ended (END RUN button) rather than a real
+   *  death. Swaps the title to "RUN ENDED" and hides the slain-by line. */
+  ended: boolean;
+  difficulty: string;
   depth: number;
   score: number;
   length: number;

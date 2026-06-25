@@ -1,7 +1,7 @@
 import type { UiContext } from './UiContext';
 
 /** All reachable menu screens. The controller keeps a stack of these. */
-export type ScreenId = 'main' | 'settings' | 'keybinds' | 'music' | 'theme' | 'gallery';
+export type ScreenId = 'main' | 'settings' | 'keybinds' | 'music' | 'theme' | 'gallery' | 'difficulty';
 
 /** Actions a screen can request of the controller (navigation + run lifecycle). */
 export interface MenuApi {

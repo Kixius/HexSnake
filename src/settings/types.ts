@@ -1,4 +1,5 @@
 import type { ThemeId } from '../theme';
+import type { Difficulty } from '../config';
 
 /** Direction actions use indices 0..5 matching DIRS in grid/hex.ts (N,NE,SE,S,SW,NW). */
 export type DirAction = 'dir0' | 'dir1' | 'dir2' | 'dir3' | 'dir4' | 'dir5';
@@ -30,4 +31,6 @@ export interface Settings {
   keybinds: Keybinds;
   audio: AudioSettings;
   theme: ThemeId;
+  /** Run difficulty (easy/normal/hard). Applied at run start in Game.startRun. */
+  difficulty: Difficulty;
 }

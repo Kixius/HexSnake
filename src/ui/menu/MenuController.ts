@@ -4,6 +4,7 @@ import { mainScreen } from './screens/MainScreen';
 import { cardGalleryScreen } from './screens/CardGalleryScreen';
 import { keybindsScreen } from './screens/KeybindsScreen';
 import { musicScreen } from './screens/MusicScreen';
+import { difficultyScreen } from './screens/DifficultyScreen';
 import { settingsHubScreen } from './screens/SettingsHubScreen';
 import { themeScreen } from './screens/ThemeScreen';
 import type { MenuApi, Screen, ScreenId } from './types';
@@ -23,6 +24,7 @@ const SCREEN_TITLES: Record<ScreenId, string> = {
   music: 'MUSIC',
   theme: 'THEME',
   gallery: 'CARD GALLERY',
+  difficulty: 'DIFFICULTY',
 };
 
 /**
@@ -42,6 +44,7 @@ export class MenuController {
     settings: settingsHubScreen,
     theme: themeScreen,
     music: musicScreen,
+    difficulty: difficultyScreen,
     keybinds: keybindsScreen,
     gallery: cardGalleryScreen,
   };

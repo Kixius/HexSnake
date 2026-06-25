@@ -62,6 +62,24 @@ export const CONFIG = {
 } as const;
 
 /**
+ * Difficulty levels. Chosen on the DIFFICULTY settings screen, persisted, and
+ * applied once at run start (frozen for the whole run). speedMult scales the
+ * tick rate (higher = faster snake = harder); scoreMult scales all points earned
+ * (harder = more points, a risk/reward incentive). Read in Game.tickDt /
+ * Game.addScore.
+ */
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+export const DIFFICULTY: Record<Difficulty, { speedMult: number; scoreMult: number; label: string }> = {
+  easy: { speedMult: 0.75, scoreMult: 0.75, label: 'EASY' },
+  normal: { speedMult: 1.0, scoreMult: 1.0, label: 'NORMAL' },
+  hard: { speedMult: 1.3, scoreMult: 1.5, label: 'HARD' },
+};
+
+/** Stable order for the picker rows (Easy -> Normal -> Hard). */
+export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'normal', 'hard'];
+
+/**
  * Color palette. Typed as a mutable `Palette` interface (not `as const`) so
  * themes can swap it at runtime: `theme.ts` does `Object.assign(PALETTE, preset)`,
  * and because every reader accesses `PALETTE.x` live at draw time, the next frame

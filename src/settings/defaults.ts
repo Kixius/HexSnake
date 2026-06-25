@@ -18,7 +18,7 @@ export const DEFAULT_KEYBINDS: Keybinds = {
 };
 
 export const DEFAULT_AUDIO: AudioSettings = {
-  musicVolume: 0.6,
+  musicVolume: 0.25,
   muted: false,
   sfxEnabled: true,
 };
@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keybinds: { ...DEFAULT_KEYBINDS },
   audio: { ...DEFAULT_AUDIO },
   theme: DEFAULT_THEME_ID,
+  difficulty: 'normal',
 };
 
 /** Fresh deep copy so callers never mutate the shared default object. */
@@ -35,5 +36,6 @@ export function cloneDefaults(): Settings {
     keybinds: { ...DEFAULT_KEYBINDS },
     audio: { ...DEFAULT_AUDIO },
     theme: DEFAULT_SETTINGS.theme,
+    difficulty: DEFAULT_SETTINGS.difficulty,
   };
 }

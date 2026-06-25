@@ -1,4 +1,6 @@
 import { isThemeId } from '../theme';
+import { DIFFICULTY_ORDER } from '../config';
+import type { Difficulty } from '../config';
 import { cloneDefaults } from './defaults';
 import type { AudioSettings, Keybinds, Settings } from './types';
 
@@ -25,6 +27,10 @@ class SettingsStore {
 
   get audio(): AudioSettings {
     return this.settings.audio;
+  }
+
+  get difficulty(): Difficulty {
+    return this.settings.difficulty;
   }
 
   /** Load from storage (deep-merged over defaults). Safe to call once at boot. */
@@ -66,6 +72,12 @@ class SettingsStore {
     this.emit();
   }
 
+  setDifficulty(difficulty: Difficulty): void {
+    this.settings = { ...this.settings, difficulty };
+    this.save();
+    this.emit();
+  }
+
   onChange(cb: Listener): () => void {
     this.listeners.add(cb);
     return () => {
@@ -89,6 +101,7 @@ function merge(parsed: unknown): Settings {
   if (p.keybinds) out.keybinds = mergeKeybinds(p.keybinds, out.keybinds);
   if (p.audio) out.audio = mergeAudio(p.audio, out.audio);
   if (isThemeId(p.theme)) out.theme = p.theme;
+  if (isDifficulty(p.difficulty)) out.difficulty = p.difficulty;
   return out;
 }
 
@@ -113,4 +126,8 @@ function mergeAudio(src: unknown, def: AudioSettings): AudioSettings {
   if (typeof s.muted === 'boolean') out.muted = s.muted;
   if (typeof s.sfxEnabled === 'boolean') out.sfxEnabled = s.sfxEnabled;
   return out;
+}
+
+function isDifficulty(x: unknown): x is Difficulty {
+  return typeof x === 'string' && (DIFFICULTY_ORDER as readonly string[]).includes(x);
 }

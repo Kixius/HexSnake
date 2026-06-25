@@ -1,4 +1,4 @@
-import { CONFIG, PALETTE } from '../config';
+import { CONFIG, DIFFICULTY, PALETTE, type Difficulty } from '../config';
 import { type Hex, equals, hexKey } from '../grid/hex';
 import { type GameSnapshot, createSnapshot } from '../upgrades/snapshot';
 import { UpgradeSystem } from '../upgrades/UpgradeSystem';
@@ -38,6 +38,12 @@ export class Game {
   state: State = State.Menu;
   private depth = 1;
   private score = 0;
+  /** Per-run difficulty multipliers, read once from settings in startRun (1 = normal).
+   *  Frozen for the run so a mid-run settings change only affects the next run. */
+  private diffSpeedMult = 1;
+  private diffScoreMult = 1;
+  /** The run's frozen difficulty id (shown on the death summary). */
+  private runDifficulty: Difficulty = 'normal';
   private essenceCollected = 0;
   private portalActive = false;
   private paused = false;
@@ -56,6 +62,10 @@ export class Game {
 
   /** Upgrade-select: card index under the pointer (-1 = none). */
   private hoveredCard = -1;
+  /** Pause-screen END RUN button hit-rect (CSS px); set each frame while paused. */
+  private endRunBtn: { x: number; y: number; w: number; h: number } | null = null;
+  /** Pointer position for pause-screen button hover (CSS px); -1 when outside. */
+  private uiMouse = { x: -1, y: -1 };
   /** Upgrade-select: active pick animation; the choice applies once it elapses. */
   private pickAnim: { index: number; start: number } | null = null;
   private readonly pickAnimMs = 240;
@@ -116,6 +126,9 @@ export class Game {
     applyTheme(settings.theme);
     this.input.applyKeybinds(settings.keybinds);
     audioManager.apply(settings.audio);
+    // Register + (on first gesture) play the looping background track. BASE_URL
+    // is './' for the Tauri build, so the path resolves in both web and desktop.
+    audioManager.registerMusic('bg', `${import.meta.env.BASE_URL}music/bg.mp3`);
     // Re-bind keys + re-apply theme/audio live whenever settings change.
     settingsStore.onChange((s) => {
       this.input.applyKeybinds(s.keybinds);
@@ -145,6 +158,8 @@ export class Game {
         this.menu.onPointerMove(p.x, p.y, true);
       } else if (this.state === State.UpgradeSelect) {
         this.hoveredCard = this.overlays.hitTestCard(p.x, p.y) ?? -1;
+      } else if (this.state === State.Playing && this.paused) {
+        this.uiMouse = p;
       }
     });
     this.canvas.addEventListener('pointerup', () => {
@@ -156,6 +171,8 @@ export class Game {
         this.menu.onPointerMove(0, 0, false);
       } else if (this.state === State.UpgradeSelect) {
         this.hoveredCard = -1;
+      } else if (this.state === State.Playing && this.paused) {
+        this.uiMouse = { x: -1, y: -1 };
       }
     });
     requestAnimationFrame(this.loop);
@@ -186,7 +203,9 @@ export class Game {
     );
     // Spore: each consumed pellet permanently slows the snake (multiplicative).
     const slow = Math.pow(1 - CONFIG.sporeSlowPerStack, this.snap.sporeStacks);
-    const rate = base * slow;
+    // Difficulty: scales the whole rate (applied after the maxTickRate cap, so
+    // HARD can exceed the normal cap at depth; EASY sits comfortably below).
+    const rate = base * slow * this.diffSpeedMult;
     const dt = 1000 / rate;
     // Slow-mo: a larger dt per tick => fewer ticks fire => 0.25× real time.
     return this.debugGodMode ? dt / this.debugTimeScale : dt;
@@ -251,7 +270,7 @@ export class Game {
 
     if (res.ateEssence) {
       this.essenceCollected++;
-      this.score += Math.round(CONFIG.scorePerEssence * this.snap.scoreMult);
+      this.addScore(CONFIG.scorePerEssence);
       // Tri-Directional Fork: eating one cluster member dissolves the other two.
       const sibs = floor.clusters.get(hexKey(snake.head));
       if (sibs) {
@@ -272,7 +291,7 @@ export class Game {
       this.upgrades.applySpore(this.snap);
     }
     if (res.ateCore) {
-      this.score += Math.round(CONFIG.scorePerCore * this.snap.scoreMult);
+      this.addScore(CONFIG.scorePerCore);
       this.openUpgradeSelect();
       return;
     }
@@ -294,7 +313,7 @@ export class Game {
 
     // Ouroboros Loop: score the vaporized hazards and drop the enclosed obstacles.
     if (res.loopedHazards > 0) {
-      this.score += Math.round(res.loopedHazards * CONFIG.scorePerLooped * this.snap.scoreMult);
+      this.addScore(res.loopedHazards * CONFIG.scorePerLooped);
       const kill = new Set(res.loopInsideKeys);
       floor.obstacles = floor.obstacles.filter((o) => !kill.has(hexKey(o.hex)));
     }
@@ -311,9 +330,21 @@ export class Game {
 
   // ---- transitions ----
 
+  /** Add points: base value × the upgrade score multiplier × the run's difficulty
+   *  multiplier. Centralizes the two multipliers so every scoring event honors
+   *  both (Apex Predator resets snap.scoreMult only; difficulty stays for the run). */
+  private addScore(base: number): void {
+    this.score += Math.round(base * this.snap.scoreMult * this.diffScoreMult);
+  }
+
   private startRun(): void {
     this.depth = 1;
     this.score = 0;
+    // Freeze the chosen difficulty's multipliers for this run.
+    const diff = DIFFICULTY[settingsStore.current.difficulty];
+    this.diffSpeedMult = diff.speedMult;
+    this.diffScoreMult = diff.scoreMult;
+    this.runDifficulty = settingsStore.current.difficulty;
     this.snap = createSnapshot();
     this.upgrades = new UpgradeSystem();
     this.runSummary = null;
@@ -347,7 +378,7 @@ export class Game {
   }
 
   private onFloorCleared(): void {
-    this.score += Math.round(CONFIG.scorePerDepthCleared * this.snap.scoreMult);
+    this.addScore(CONFIG.scorePerDepthCleared);
     this.depth++;
     // Defer beginFloor() until after the pick — floor generation reads the
     // snapshot (e.g. Nutrient Storage's essenceReduction), so it must see the
@@ -401,16 +432,38 @@ export class Game {
     this.pickUpgrade(idx);
   }
 
+  /** End the run from the pause screen: show the run summary (same screen as a
+   *  death, but framed as a voluntary end — "RUN ENDED"). ENTER then returns to
+   *  the title. Reuses the death-cinematic reveal. */
+  private endRun(): void {
+    this.paused = false;
+    this.endRunBtn = null;
+    this.deathStartedAt = performance.now();
+    this.runSummary = {
+      ended: true,
+      difficulty: DIFFICULTY[this.runDifficulty].label,
+      depth: this.depth,
+      score: this.score,
+      length: this.snake?.length ?? 0,
+      mutations: this.upgrades.buildSummary(),
+      reason: null,
+    };
+    this.state = State.Dead;
+  }
+
   private onDeath(reason: DeathReason, now: number): void {
-    // A spare life revives you on the current floor (essence progress kept).
-    // Only a death with no lives left ends the run.
-    if (this.snap.lives > 0) {
+    // `lives` counts the life you're currently on, so 1 = last life. A death with
+    // more than your last life revives you on the current floor (essence progress
+    // kept); a death on your last life ends the run.
+    if (this.snap.lives > 1) {
       this.snap.lives -= 1;
       this.respawn(now);
       return;
     }
     this.deathStartedAt = now; // begin the death cinematic (zoom + slow UI reveal)
     this.runSummary = {
+      ended: false,
+      difficulty: DIFFICULTY[this.runDifficulty].label,
       depth: this.depth,
       score: this.score,
       length: this.snake?.length ?? 0,
@@ -479,6 +532,13 @@ export class Game {
   }
 
   private onClick(e: MouseEvent): void {
+    // Pause screen: END RUN abandons the run and returns to the title.
+    if (this.state === State.Playing && this.paused && this.endRunBtn) {
+      const p = this.canvasPos(e);
+      const b = this.endRunBtn;
+      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) this.endRun();
+      return;
+    }
     if (this.state !== State.UpgradeSelect) return;
     const p = this.canvasPos(e);
     const idx = this.overlays.hitTestCard(p.x, p.y);
@@ -633,6 +693,34 @@ export class Game {
     ctx.font = "16px 'Consolas','Courier New',monospace";
     ctx.fillStyle = '#8b97a7';
     ctx.fillText('press P to resume', this.w / 2, this.h / 2 + 36);
+
+    // END RUN button — abandons the run and returns to the title.
+    const bw = 200;
+    const bh = 46;
+    const bx = (this.w - bw) / 2;
+    const by = this.h / 2 + 78;
+    this.endRunBtn = { x: bx, y: by, w: bw, h: bh };
+    const m = this.uiMouse;
+    const hover = m.x >= bx && m.x <= bx + bw && m.y >= by && m.y <= by + bh;
+    ctx.fillStyle = PALETTE.grid;
+    ctx.fillRect(bx, by, bw, bh);
+    if (hover) {
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = PALETTE.danger;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.restore();
+    }
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = PALETTE.danger;
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.fillStyle = hover ? PALETTE.danger : PALETTE.text;
+    ctx.font = "bold 18px 'Consolas','Courier New',monospace";
+    ctx.fillText('END RUN', this.w / 2, by + bh / 2);
+    ctx.font = "13px 'Consolas','Courier New',monospace";
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillText('abandon this run', this.w / 2, by + bh + 16);
+
     ctx.textAlign = 'left';
   }
 }

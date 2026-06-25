@@ -17,8 +17,9 @@ export interface GameSnapshot {
   maxHealth: number;
   /** Wall/bounds soak charges (Chitinous Shell) — separate from health. */
   wallCharges: number;
-  /** Spare lives. Each death while this is > 0 revives you on the current floor
-   *  (essence progress kept); a death at 0 ends the run. Life cards add to this. */
+  /** Lives remaining, counting the life you're currently on. A death while this
+   *  is > 1 revives you on the current floor (essence progress kept); a death at
+   *  1 (your last life) ends the run. Life cards add to this. */
   lives: number;
 
   /** Score multiplier. Apex Predator resets this to 1 via UpgradeSystem.resetMultiplier. */

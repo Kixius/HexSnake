@@ -12,10 +12,11 @@ export const settingsHubScreen: Screen = {
     const x = (w - rowW) / 2;
     let y = h * 0.3;
 
-    const entries: { id: string; label: string; target: 'keybinds' | 'music' | 'theme' }[] = [
+    const entries: { id: string; label: string; target: 'keybinds' | 'music' | 'theme' | 'difficulty' }[] = [
       { id: 'set.keybinds', label: 'KEYBINDS', target: 'keybinds' },
       { id: 'set.music', label: 'MUSIC', target: 'music' },
       { id: 'set.theme', label: 'THEME', target: 'theme' },
+      { id: 'set.difficulty', label: 'DIFFICULTY', target: 'difficulty' },
     ];
     for (const e of entries) {
       if (listRow(ctx, ui, { id: e.id, x, y, w: rowW, h: rowH, label: e.label, value: '>' })) {

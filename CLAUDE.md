@@ -102,14 +102,15 @@ offers 3 weighted-distinct choices on floor-clear and chamber-core-consume.
   **Hydra's Venom** (1×/run) survives an obstacle hit by severing the front half — the
   tail half reverses to become the new head (heading derived neck→head so it moves
   *outward*, never into its own neck).
-- **Death isn't always run-end — `GameSnapshot.lives` (default `CONFIG.startLives` = 3).**
-  A true death (wall/obstacle/self/slime) with `lives > 0` instead *revives*: `onDeath`
-  decrements a life and `respawn()` repositions the snake to the floor spawn in launch
-  state, refills health/armor/phase/slip, and plays a red flash — but **keeps the same
-  floor** (layout, slime, roaming obstacles, already-eaten essence) and the `essenceCollected`
-  /`portalActive` progress ("resume from the middle"). Only a death at `lives == 0` ends the
-  run. **Auxiliary Heart** (common, maxStacks 3) and **Regenerative Bloom** (epic, maxStacks 1)
-  add lives. Card-resolved survivals (Chitinous/Phase/Apex/Ouroboros/Hydra) never touch lives.
+- **Death isn't always run-end — `GameSnapshot.lives` (default `CONFIG.startLives` = 3) counts
+  the life you're currently on, so 1 = last life.** A true death (wall/obstacle/self/slime)
+  with `lives > 1` instead *revives*: `onDeath` decrements a life and `respawn()` repositions
+  the snake to the floor spawn in launch state, refills health/armor/phase/slip, and plays a
+  red flash — but **keeps the same floor** (layout, slime, roaming obstacles, already-eaten
+  essence) and the `essenceCollected`/`portalActive` progress ("resume from the middle"). Only
+  a death at `lives == 1` (your last life) ends the run, so 3 lives = 3 deaths. **Auxiliary
+  Heart** (common, maxStacks 3) and **Regenerative Bloom** (epic, maxStacks 1) add lives.
+  Card-resolved survivals (Chitinous/Phase/Apex/Ouroboros/Hydra) never touch lives.
 - **Collision resolution order in `SnakeController.step`** is fixed, first-match-wins:
   bounds/wall (→ active **Diagonal Slip** deflects along a placed wall, else Chitinous
   soak+shatter, else die) → moving obstacle (→ **Hydra** split or die) → commit move →

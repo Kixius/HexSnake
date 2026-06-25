@@ -128,27 +128,28 @@ export class Overlays {
       ctx.scale(s, s);
       ctx.translate(-this.w / 2, -ty);
       ctx.font = `bold 64px ${FONT}`;
-      ctx.fillStyle = PALETTE.danger;
-      ctx.shadowColor = PALETTE.dangerGlow;
+      const ended = summary.ended;
+      ctx.fillStyle = ended ? PALETTE.gold : PALETTE.danger;
+      ctx.shadowColor = ended ? PALETTE.gold : PALETTE.dangerGlow;
       ctx.shadowBlur = 20;
-      ctx.fillText('YOU DIED', this.w / 2, ty);
+      ctx.fillText(ended ? 'RUN ENDED' : 'YOU DIED', this.w / 2, ty);
       ctx.restore();
     }
 
-    // Slain-by reason.
+    // Slain-by reason (skipped for a voluntary end — there's no killer).
     const tReason = stage(0.42, 0.68);
-    if (tReason > 0) {
+    if (tReason > 0 && !summary.ended && summary.reason) {
       ctx.save();
       ctx.globalAlpha = tReason;
       ctx.font = `16px ${FONT}`;
       ctx.fillStyle = PALETTE.textDim;
-      const reasonTxt = summary.reason ? `slain by: ${summary.reason.toUpperCase()}` : '';
-      ctx.fillText(reasonTxt, this.w / 2, this.h * 0.22 + 48);
+      ctx.fillText(`slain by: ${summary.reason.toUpperCase()}`, this.w / 2, this.h * 0.22 + 48);
       ctx.restore();
     }
 
-    // Stats lines (staggered).
+    // Stats lines (staggered). Difficulty first — it frames the whole run.
     const lines: [string, string][] = [
+      ['DIFFICULTY', summary.difficulty],
       ['DEPTH REACHED', `${summary.depth}`],
       ['FINAL SCORE', `${summary.score}`],
       ['LENGTH', `${summary.length}`],
@@ -205,7 +206,11 @@ export class Overlays {
       ctx.globalAlpha = tEnter * (0.5 + 0.5 * pulse);
       ctx.fillStyle = PALETTE.gold;
       ctx.font = `bold 18px ${FONT}`;
-      ctx.fillText('PRESS ENTER TO TRY AGAIN', this.w / 2, this.h - 50);
+      ctx.fillText(
+        summary.ended ? 'PRESS ENTER TO CONTINUE' : 'PRESS ENTER TO TRY AGAIN',
+        this.w / 2,
+        this.h - 50,
+      );
       ctx.restore();
     }
 
