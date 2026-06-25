@@ -19,6 +19,7 @@ export const DEFAULT_KEYBINDS: Keybinds = {
 
 export const DEFAULT_AUDIO: AudioSettings = {
   musicVolume: 0.25,
+  sfxVolume: 0.25,
   muted: false,
   sfxEnabled: true,
 };

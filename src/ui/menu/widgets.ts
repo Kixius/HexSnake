@@ -1,6 +1,26 @@
 import { PALETTE } from '../../config';
 import { FONT } from '../paint';
+import { audioManager } from '../../audio/AudioManager';
 import type { UiContext } from './UiContext';
+
+/**
+ * Hover blip on hover-enter: tracks the currently-hovered widget id so the sound
+ * fires once when the pointer enters a new button/row, not every frame it stays.
+ * Cleared when the pointer leaves that widget. Module-level because widgets are
+ * immediate-mode (rebuilt each draw), so the "previous hover" must persist across
+ * frames. Only menu widgets use this; gameplay draws nothing through these widgets.
+ */
+let hoveredWidgetId: string | null = null;
+function hoverSfx(id: string, hover: boolean): void {
+  if (hover) {
+    if (hoveredWidgetId !== id) {
+      audioManager.playSfx('hover');
+      hoveredWidgetId = id;
+    }
+  } else if (hoveredWidgetId === id) {
+    hoveredWidgetId = null;
+  }
+}
 
 /**
  * Immediate-mode menu widgets. Each is `(ctx, ui, opts) => result`: it draws,
@@ -21,6 +41,8 @@ export interface ButtonOpts {
 /** A rectangular button. Returns true on activation (click or focused Enter). */
 export function button(ctx: CanvasRenderingContext2D, ui: UiContext, o: ButtonOpts): boolean {
   const { hover, focused, activated } = ui.interact(o.id, { x: o.x, y: o.y, w: o.w, h: o.h });
+  hoverSfx(o.id, hover);
+  if (activated) audioManager.playSfx('click');
   const accent = hover || focused ? PALETTE.gold : PALETTE.teal;
   ctx.fillStyle = PALETTE.grid;
   ctx.fillRect(o.x, o.y, o.w, o.h);
@@ -143,6 +165,8 @@ export function listRow(
   o: ListRowOpts,
 ): boolean {
   const { hover, focused, activated } = ui.interact(o.id, { x: o.x, y: o.y, w: o.w, h: o.h });
+  hoverSfx(o.id, hover);
+  if (activated) audioManager.playSfx('click');
   const hi = hover || focused || o.selected;
   const accent = o.selected ? PALETTE.gold : hover || focused ? PALETTE.teal : PALETTE.gridEdge;
   ctx.fillStyle = hi ? accent : 'transparent';

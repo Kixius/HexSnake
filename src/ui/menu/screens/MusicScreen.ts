@@ -26,6 +26,17 @@ export const musicScreen: Screen = {
     if (Math.abs(v - audio.musicVolume) > 1e-6) settingsStore.setAudio({ musicVolume: v });
     y += 70;
 
+    // SFX volume.
+    label(ctx, x, y - 8, 'SFX VOLUME', { color: PALETTE.text, font: `bold 15px ${FONT}` });
+    label(ctx, x + colW - 60, y - 8, `${Math.round(audio.sfxVolume * 100)}%`, {
+      color: PALETTE.textDim,
+      font: `15px ${FONT}`,
+      align: 'right',
+    });
+    const sv = slider(ctx, ui, { id: 'mus.sfxvol', x, y: y + 16, w: colW, value: audio.sfxVolume, min: 0, max: 1 });
+    if (Math.abs(sv - audio.sfxVolume) > 1e-6) settingsStore.setAudio({ sfxVolume: sv });
+    y += 70;
+
     // Mute.
     const muted = toggle(ctx, ui, { id: 'mus.mute', x, y, w: colW, label: 'MUTE ALL', value: audio.muted });
     if (muted !== audio.muted) settingsStore.setAudio({ muted });

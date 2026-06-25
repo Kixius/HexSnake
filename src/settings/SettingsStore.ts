@@ -123,6 +123,9 @@ function mergeAudio(src: unknown, def: AudioSettings): AudioSettings {
   if (typeof s.musicVolume === 'number' && Number.isFinite(s.musicVolume)) {
     out.musicVolume = Math.max(0, Math.min(1, s.musicVolume));
   }
+  if (typeof s.sfxVolume === 'number' && Number.isFinite(s.sfxVolume)) {
+    out.sfxVolume = Math.max(0, Math.min(1, s.sfxVolume));
+  }
   if (typeof s.muted === 'boolean') out.muted = s.muted;
   if (typeof s.sfxEnabled === 'boolean') out.sfxEnabled = s.sfxEnabled;
   return out;

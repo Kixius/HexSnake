@@ -23,6 +23,8 @@ export interface Keybinds {
 export interface AudioSettings {
   /** Master music volume 0..1. */
   musicVolume: number;
+  /** Sound-effects volume 0..1 (applied when `sfxEnabled` is on). */
+  sfxVolume: number;
   muted: boolean;
   sfxEnabled: boolean;
 }

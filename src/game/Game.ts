@@ -12,6 +12,7 @@ import { Overlays } from '../ui/Overlays';
 import { Input } from '../input/Input';
 import { exitApp } from '../platform/tauri';
 import { audioManager } from '../audio/AudioManager';
+import { SFX_FILES } from '../audio/sfx';
 import { MenuController } from '../ui/menu/MenuController';
 import { applyTheme } from '../theme';
 import { settingsStore } from '../settings/SettingsStore';
@@ -44,6 +45,8 @@ export class Game {
   private diffScoreMult = 1;
   /** The run's frozen difficulty id (shown on the death summary). */
   private runDifficulty: Difficulty = 'normal';
+  /** perf.now of the last slime-DoT SFX (throttle so lingering doesn't spam). */
+  private lastSlimeSfxAt = 0;
   private essenceCollected = 0;
   private portalActive = false;
   private paused = false;
@@ -129,6 +132,10 @@ export class Game {
     // Register + (on first gesture) play the looping background track. BASE_URL
     // is './' for the Tauri build, so the path resolves in both web and desktop.
     audioManager.registerMusic('bg', `${import.meta.env.BASE_URL}music/bg.mp3`);
+    // Register all one-shot SFX (decoded async; playSfx no-ops until loaded).
+    for (const s of SFX_FILES) {
+      audioManager.registerSfx(s.id, `${import.meta.env.BASE_URL}sfx/${s.file}`);
+    }
     // Re-bind keys + re-apply theme/audio live whenever settings change.
     settingsStore.onChange((s) => {
       this.input.applyKeybinds(s.keybinds);
@@ -266,11 +273,14 @@ export class Game {
       snake.started = true;
     }
 
+    const prevHeading = snake.heading;
     const res = snake.step(floor.grid, floor.obstacles, this.snap, now, this.tickDt(), candidate);
+    if (snake.heading !== prevHeading) audioManager.playSfx('move');
 
     if (res.ateEssence) {
       this.essenceCollected++;
       this.addScore(CONFIG.scorePerEssence);
+      audioManager.playSfx('eat_essence');
       // Tri-Directional Fork: eating one cluster member dissolves the other two.
       const sibs = floor.clusters.get(hexKey(snake.head));
       if (sibs) {
@@ -289,13 +299,16 @@ export class Game {
       // Spore: grants a permanent multiplicative slow for the rest of the run (a buff).
       // Routed through UpgradeSystem so it stays the sole GameSnapshot writer.
       this.upgrades.applySpore(this.snap);
+      audioManager.playSfx('eat_spore');
     }
     if (res.ateCore) {
       this.addScore(CONFIG.scorePerCore);
+      audioManager.playSfx('eat_core');
       this.openUpgradeSelect();
       return;
     }
     if (res.reachedPortal) {
+      audioManager.playSfx('portal');
       this.onFloorCleared();
       return;
     }
@@ -311,21 +324,36 @@ export class Game {
       }
     }
 
+    // Chitinous Shell: soaked a wall hit (and maybe shattered the wall hex).
+    if (res.wallSoaked) audioManager.playSfx('wall_impact');
+    if (res.wallBroken) audioManager.playSfx('wall_break');
+    // Hydra's Venom: severed the front half to survive an obstacle hit.
+    if (res.hydraSplit) audioManager.playSfx('hydra');
+    // Slime DoT: throttled so lingering on a pool doesn't machine-gun the sound.
+    if (res.onSlime && now - this.lastSlimeSfxAt >= 250) {
+      this.lastSlimeSfxAt = now;
+      audioManager.playSfx('slime');
+    }
+
     // Ouroboros Loop: score the vaporized hazards and drop the enclosed obstacles.
     if (res.loopedHazards > 0) {
       this.addScore(res.loopedHazards * CONFIG.scorePerLooped);
+      audioManager.playSfx('vaporize');
       const kill = new Set(res.loopInsideKeys);
       floor.obstacles = floor.obstacles.filter((o) => !kill.has(hexKey(o.hex)));
     }
     // Apex Predator: biting the tail resets the score multiplier.
     if (res.apexEaten > 0) {
       this.upgrades.resetMultiplier(this.snap);
+      audioManager.playSfx('apex');
     }
 
     // Obstacles roam (they avoid the snake, so no post-move head kill). Acidic
     // Trail dissolves any that sit on or cross the snake's trailing acid hexes.
+    const obstacleCountBefore = floor.obstacles.length;
     const snakeCells = new Set(snake.segments.map((s) => hexKey(s)));
     stepObstacles(floor.obstacles, floor.grid, snakeCells, snake.acidicHexes);
+    if (floor.obstacles.length < obstacleCountBefore) audioManager.playSfx('dissolve');
   }
 
   // ---- transitions ----
@@ -355,6 +383,7 @@ export class Game {
   }
 
   private beginFloor(): void {
+    if (this.depth > 1) audioManager.playSfx('next_level');
     this.floor = FloorGenerator.generate(this.depth, this.snap);
     const floor = this.floor;
     const heading: Direction = 2; // SE
@@ -401,6 +430,7 @@ export class Game {
     this.snake?.onUpgradesChanged(this.snap);
     this.choices = [];
     this.input.clearQueue(); // discard directions mashed during the card screen
+    audioManager.playSfx('upgrade');
 
     if (this.floorAdvancePending) {
       // Floor-clear pick: now generate the next floor with the updated snapshot.
@@ -457,9 +487,11 @@ export class Game {
     // kept); a death on your last life ends the run.
     if (this.snap.lives > 1) {
       this.snap.lives -= 1;
+      audioManager.playSfx('respawn');
       this.respawn(now);
       return;
     }
+    audioManager.playSfx('death');
     this.deathStartedAt = now; // begin the death cinematic (zoom + slow UI reveal)
     this.runSummary = {
       ended: false,
