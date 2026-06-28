@@ -1,58 +1,59 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project status
 
-HexSnake is a complete, playable browser game: *Snake* on a **hexagonal grid** with
-**roguelike progression**, built with vanilla TypeScript + HTML5 Canvas + Vite (no game
-framework). The original approved design lives in
-`C:\Users\daffy\.claude\plans\act-as-an-expert-twinkling-lovelace.md`. Run with
-`npm run dev`.
+HexSnake is *Snake* on a **hexagonal grid** with **roguelike progression**. It is now a
+**Godot 4.7 / GDScript** project in `godot/` (the original TypeScript + Canvas + Vite +
+Tauri version has been retired and removed — the Godot port reached feature parity and is
+the sole implementation). The full port history + the four Godot gotchas live in the
+auto-memory (`godot-port`); the porting plan is `resilient-snacking-wadler.md`.
+
+Run the game with the Godot editor, or headlessly for tests (see Commands).
 
 ## Commands
 
+The Godot 4.7 console build is used headlessly. On this machine it lives at
+`C:\Users\daffy\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe`
+(see the `godot-cli-path` memory note).
+
 ```bash
-npm install        # devDeps only (vite, typescript, @types/node, puppeteer-core)
-npm run dev        # Vite dev server with HMR (opens browser)
-npm run build      # tsc --noEmit (typecheck) then vite build -> dist/
-npm run preview    # serve the production build
-npm run typecheck  # tsc --noEmit only
-node scripts/smoke.mjs   # headless smoke test (needs `npm run dev` running)
-npm run tauri dev    # desktop dev window: Vite + Tauri shell (needs Rust + MSVC Build Tools)
-npm run tauri build  # build the Windows app -> src-tauri/target/release/{app.exe, bundle/nsis/*.exe}
+# From the repo root (the project is in godot/):
+godot --headless --path godot --import          # compile all scripts + register autoloads
+godot --headless --path godot -s res://core/<test>.gd   # run a SceneTree test script
+godot --path godot                               # windowed run (the actual game)
+godot --headless --path godot --export-release "Windows Desktop"   # build (needs export templates)
 ```
 
-**Desktop build:** `npm run tauri build` wraps the Vite output as a Windows app via Tauri 2
-(`src-tauri/`). It needs the Rust toolchain + MSVC C++ Build Tools installed. The web and
-desktop builds share **identical game code** — only `vite.config.ts` (`base: './'`, pinned
-dev port) and `src-tauri/tauri.conf.json` are desktop-specific; never fork game logic for it.
+The 8 headless test suites in `godot/core/`: `hex_test`, `play_test`, `floor_test`,
+`upgrade_test`, `draft_test`, `touch_test`, `parity_test`, `keybind_test`. Run them all
+after any change — they are the safety net.
 
-**Debug cheat (dev only):** gated on `import.meta.env.DEV` (`src/vite-env.d.ts` types it),
-so it's live under `npm run dev` / `npm run tauri dev` and dead code in production builds.
-- `]` (BracketRight) in `Game.onMetaKey`: during **Playing** it calls `onFloorCleared()`
-  (instantly clears the floor → upgrade pick → next depth); during **UpgradeSelect** it
-  auto-picks the first card. Mash `]` to fast-forward to deep floors / specific upgrades.
-- `\` (Backslash) during **Playing** toggles `debugGodMode`: the snake is invulnerable
-  (deaths are swallowed in `update`) AND `tickDt()` runs at 0.25× (`dt / debugTimeScale`),
-  i.e. slow-mo for inspecting collisions. Toggling on also tops up health and clears the
-  accumulator so the rate change doesn't burst-catch-up.
+**Debug cheats (dev only):** both gated on `OS.is_debug_build()` (dead code in exports).
+In `GameManager._unhandled_input`: `]` fast-forwards (clears the floor → draft → next
+depth, or auto-picks the first card on the draft screen); `\` toggles invulnerable +
+0.25× slow-mo (`debug_god_mode`). Mash `]` to fast-forward through floors/drafts.
 
-A dim `DEV` hint is drawn in `renderFrame` via `drawDevHint()`.
-
-`tsconfig.json` uses `"strict": true` and `"noUncheckedIndexedAccess": true`. The latter
-makes array indexing (e.g. `DIRS[i]`, `segments[0]`) type as `T | undefined` — use the
-`head` getter (which throws if empty) and the `dir(i)` helper rather than indexing
-directly, so bugs fail loudly.
+**Godot gotchas (recurring — see the `godot-port` memory for full detail):**
+1. Don't name an autoload `Theme` (collides with the built-in) — ours is `Palette`.
+2. Autoload singletons are NOT accessible from GDScript `static func` *except* their
+   constants — static helpers (e.g. `FloorGenerator`, `Hazards`, `Keybinds`) may read
+   `Config.*` consts but must not call autoload instance methods.
+3. `-s` SceneTree test scripts only resolve the FIRST autoload (`Config`) by name.
+4. Autoloads don't instantiate under `-s` at all. So any script that loads as a `-s`
+   dependency (e.g. `GameManager`) must reach other autoloads by **node path**
+   (`get_node_or_null("/root/Settings")` + `.call(...)`) and null-guard when not in a
+   tree; `world.gd` can use autoloads by name directly (tests never load it).
 
 ## Hex grid system (the foundation)
 
 **Flat-top hexes, axial coordinates `Hex = { q, r }`** with derived `s = -q - r` (cube
 constraint `q + r + s = 0`). All math follows Red Blob Games' flat-top axial conventions
-and lives in **`src/grid/hex.ts`**, which is pure (no state, no canvas) — keep it that way.
+and lives in **`godot/core/hex.gd`**, which is pure (no state, no canvas) — keep it that way.
 
 The 6 directions are ordered clockwise from North; this index **is** the control index
-used everywhere (`src/input/Input.ts` maps keys to it):
+used everywhere (`godot/input/input_router.gd` maps keys to it via `Settings.keybinds`):
 
 | Key | Dir | (dq, dr) |    | Key | Dir | (dq, dr) |
 |-----|-----|----------|----|-----|-----|----------|
@@ -60,106 +61,91 @@ used everywhere (`src/input/Input.ts` maps keys to it):
 | E   | NE  | (+1, -1) |    | A   | SW  | (-1, +1) |
 | D   | SE  | (+1,  0) |    | Q   | NW  | (-1,  0) |
 
-- **Opposite direction** (no-reverse rule) = `(index + 3) % 6`.
-- Playfield is a **hexagonal arena of radius R** (`CONFIG.radius`, default 11 → 397
-  cells); `inBounds(h) = max(|q|, |r|, |q+r|) <= R`. No wraparound — out-of-bounds is a wall.
-- Cube-rounding (in `pixelToHex`) re-enforces `q + r + s = 0`. Always `inBounds`-check
-  pixel/mouse-derived hexes (corners round out-of-bounds).
+- **Opposite direction** (no-reverse rule) = `(index + 3) % 6` (`Hex.opposite`).
+- Playfield is a **hexagonal arena of radius R** (`Config.RADIUS`, default 11 → 397
+  cells); `in_bounds(h) = max(|q|, |r|, |q+r|) <= R`. No wraparound — out-of-bounds is a wall.
 
 ## Architecture
 
-`src/game/Game.ts` (**GameManager**) owns the fixed-timestep loop, the FSM
+`godot/game/game_manager.gd` (**GameManager**) owns the fixed-timestep loop, the FSM
 (`Menu → Playing → UpgradeSelect → Dead`), run stats, and wires every subsystem. Module
-map (full tree in `README.md`): `Game` = GameManager, `grid/` = GridManager + pure
-`hex.ts`, `snake/SnakeController`, `upgrades/UpgradeSystem` + `registry`, plus `floor/`,
-`input/`, `render/`, `ui/`.
+layout under `godot/`: `core/` (pure hex + enums + the test suites), `grid/`
+(GridManager), `snake/` (SnakeController), `upgrades/` (GameSnapshot + UpgradeSystem +
+registry), `floor/` (FloorGenerator + Hazards), `input/` (InputQueue + InputRouter),
+`render/` (World — all hand-drawn `_draw`), `ui/` (touch controls + pointer handler +
+the menu system: UiContext/MenuWidgets/MenuScreens/MenuController), `game/` (Floor,
+MovingObstacle, StepResult, RunSummary), `settings/` (Keybinds), `autoload/` (Config,
+Palette, AudioManager, Settings), `scenes/main.tscn` + `main.gd` (builds the tree).
 
 **Game loop — fixed tick + render interpolation.** The snake advances exactly 1 hex per
-logic tick; `render(alpha)` lerps each segment between `prevSegments` and `segments`.
-`update()` is pure simulation; `render()` never mutates state. Frame deltas are clamped
-(`CONFIG.maxFrameMs`); sim pauses on `document.hidden` and `P`. `GameManager` sets the
-DPR transform each frame before drawing — `Renderer.render` must **not** reset it.
+logic tick; `World._draw` lerps each segment between `prev_segments` and `segments` using
+`render_alpha` (accumulator/dt). `update()` is pure simulation; `_draw` never mutates
+state. Frame deltas are clamped (`Config.MAX_FRAME_MS`); sim pauses when not `Playing`.
 
-**Upgrade seam — `GameSnapshot`** (`src/upgrades/snapshot.ts`): a single shared struct
-of tunables owned by GameManager. `UpgradeSystem.apply()` (and `resetMultiplier()`,
-used by Apex Predator) are the *only* writers — with two documented runtime
-exceptions where `SnakeController.step` writes directly: `health` (slime DoT) and
-`hydraUsed` (the one-time Hydra split). `Renderer` and `Hud` read the snapshot each
-tick. **Never** scatter `if (hasAcidicTrail)` checks — add a field to `GameSnapshot`,
-set it in `registry.ts`, and read it where needed. The pool is a curated **12-card
-draft** across four rarities (common/rare/epic/legendary); `UpgradeSystem.rollThree()`
-offers 3 weighted-distinct choices on floor-clear and chamber-core-consume.
+**Upgrade seam — `GameSnapshot`** (`godot/upgrades/game_snapshot.gd`): a single shared
+struct of tunables owned by GameManager. `UpgradeSystem.apply()` (and `reset_multiplier()`
+for Apex Predator, `apply_spore()` for Spore) are the *only* writers. Card `apply` logic
+is data-driven as GDScript lambdas in `godot/upgrades/registry.gd::build_registry()` —
+add a card there (one spot). **Never** scatter `if acidic_enabled` checks — add a field
+to `GameSnapshot`, set it in `registry.gd`, and read it where needed.
 
 ## Critical invariants (don't break these)
 
-- **Self/obstacle collision = death, unless a card resolves it.** Health (`maxHealth`,
-  default 1) is tapped only by slime DoT. **Chitinous Shell** soaks a wall hit via a
-  *separate* `wallCharges` counter (per-floor refill, cap 2) and shatters the struck
-  placed wall, not HP. Self-collision is death *unless* one of these is active: the
-  **Phase Shifter** window (`Space`), **Apex Predator** (devours the bitten tail and
-  resets the score multiplier via `UpgradeSystem.resetMultiplier`), or **Ouroboros
-  Loop** (vaporizes enclosed hazards, then truncates the body to clear the overlap).
-  **Hydra's Venom** (1×/run) survives an obstacle hit by severing the front half — the
-  tail half reverses to become the new head (heading derived neck→head so it moves
-  *outward*, never into its own neck).
-- **Death isn't always run-end — `GameSnapshot.lives` (default `CONFIG.startLives` = 3) counts
-  the life you're currently on, so 1 = last life.** A true death (wall/obstacle/self/slime)
-  with `lives > 1` instead *revives*: `onDeath` decrements a life and `respawn()` repositions
-  the snake to the floor spawn in launch state, refills health/armor/phase/slip, and plays a
-  red flash — but **keeps the same floor** (layout, slime, roaming obstacles, already-eaten
-  essence) and the `essenceCollected`/`portalActive` progress ("resume from the middle"). Only
-  a death at `lives == 1` (your last life) ends the run, so 3 lives = 3 deaths. **Auxiliary
-  Heart** (common, maxStacks 3) and **Regenerative Bloom** (epic, maxStacks 1) add lives.
-  Card-resolved survivals (Chitinous/Phase/Apex/Ouroboros/Hydra) never touch lives.
+- **Self/obstacle collision = death, unless a card resolves it.** Health
+  (`GameSnapshot.max_health`, default 1) is tapped only by slime DoT. **Chitinous Shell**
+  soaks a wall hit via a separate `wall_charges` counter (per-floor refill, cap 2) and
+  shatters the struck wall, not HP. Self-collision is death *unless* one of these is
+  active: the **Phase Shifter** window (Space), **Apex Predator** (devours the bitten
+  tail and resets the score multiplier), or **Ouroboros Loop** (vaporizes enclosed
+  hazards, then truncates the body). **Hydra's Venom** (1×/run) survives an obstacle hit
+  by severing the front half — the tail half becomes the new head, moving outward.
+- **Death isn't always run-end — `GameSnapshot.lives` (default `Config.START_LIVES` = 3)
+  counts the life you're currently on, so 1 = last life; hard cap `Config.MAX_LIVES` = 5.**
+  A true death with `lives > 1` *revives*: `on_death` decrements a life and `respawn()`
+  repositions the snake to the floor spawn in launch state, refills health/armor/phase/slip
+  — but **keeps the same floor** and essence/portal progress. Only a death at `lives == 1`
+  ends the run. **Auxiliary Heart** (+1) / **Regenerative Bloom** (+2) add lives (capped
+  at 5). Card-resolved survivals never touch lives.
 - **Collision resolution order in `SnakeController.step`** is fixed, first-match-wins:
-  bounds/wall (→ active **Diagonal Slip** deflects along a placed wall, else Chitinous
-  soak+shatter, else die) → moving obstacle (→ **Hydra** split or die) → commit move →
-  own body via `selfCollideIndex` (→ **Apex** eat / **Ouroboros** capture / die, unless
-  phasing) → essence → chamber core → portal → slime (DoT, death check last).
-- **Moving obstacles avoid the snake** (and each other) when roaming — they never insta-kill
-  by parking on the head. The danger is the snake steering *into* one. (This deliberately
-  differs from the plan's "post-move head overlap" for fairness.)
-- **Input queue:** FIFO capped at 3 in `Input.ts`; **consume exactly one queued direction
-  per tick** via `consumeNext`, re-validating no-reverse against the post-turn heading.
-  The launch path also uses `consumeNext` (never bypass it — reversing into the starting
-  body would be an instant-death bug).
-- **Real-time timers are framerate-independent:** the Phase Shifter and Diagonal Slip
-  cooldowns use `performance.now()` (advanced via the `now` passed into `update()`), not
-  per-render.
-- **Acidic Trail** leaves a lingering acid **wake**: each step the rearmost segment
-  drips a fresh pool (`snake.acidTtl`, a hexKey→ticks map), and once the tail recedes
-  off a hex that pool is left behind and decays over `snap.acidicTrailTicks` (default
-  8). `snake.acidicHexes` is the live `ReadonlySet` of still-active pools — read each
-  tick by `Renderer` and `stepObstacles`, the latter dissolving any moving obstacle that
-  stands on or crosses one (spliced out of `floor.obstacles`). The wake is what makes
-  the card work: obstacles avoid the snake's occupied cells, so only the empty vacated
-  hexes behind it can ever dissolve a roaming hazard. The old tail-melting Acid Trail
-  (and the brief "last 3 segments" version that slid with the tail and never lingered)
-  were removed when the card was repurposed.
-- **Spore is a beneficial pickup — a permanent slow is a *buff* here** (the snake
-  speeds up every floor, so slowing it buys reaction time). A green downward-triangle
-  pellet (`Occupant.Spore`, passable) spawns rarely from floor `CONFIG.sporeStartDepth`
-  (3); it's never required to advance. Collecting one consumes it (no growth/score,
-  `StepResult.ateSpore`) and adds a **permanent multiplicative slow** for the run via
-  `UpgradeSystem.applySpore` → `snap.sporeStacks`. `Game.tickDt` folds it in as
-  `rate *= Math.pow(1 - sporeSlowPerStack, sporeStacks)` (5% each, default) — this is
-  a third `GameSnapshot` writer path, routed through `UpgradeSystem` to honor the seam.
+  bounds/wall (→ **Diagonal Slip** deflect, else Chitinous soak+shatter, else die) →
+  moving obstacle (→ **Hydra** split or die) → commit move → own body (→ **Apex** eat /
+  **Ouroboros** capture / die, unless phasing) → essence → chamber core → portal → slime
+  (DoT, death check last). The `parity_test.gd` suite locks these in.
+- **Moving obstacles avoid the snake** (and each other) when roaming (`Hazards.step_obstacles`)
+  — they never insta-kill by parking on the head.
+- **Input queue:** FIFO capped at 3 (`InputQueue`); consume exactly one queued direction
+  per tick via `consume_next`, re-validating no-reverse against the post-turn heading.
+- **Real-time timers are framerate-independent:** Phase Shifter / Diagonal Slip cooldowns
+  use `Time.get_ticks_msec()` (advanced via the `now` passed into `update()`).
+- **Acidic Trail** leaves a lingering acid wake: the rearmost segment drips a pool each
+  step (`snake.acid_ttl`, a hex→ticks map), decaying over `snap.acidic_trail_ticks`
+  (default 8). `snake.acidic_hexes` is the live set; `World._draw_acid` renders it (alpha
+  interpolated across each tick via `render_alpha` for a smooth fade) and
+  `Hazards.step_obstacles` dissolves any obstacle on/crossing a pool.
+- **Spore is a beneficial pickup** — a permanent multiplicative slow is a *buff* (the
+  snake speeds up every floor). A green pellet spawns rarely from `Config.SPORE_START_DEPTH`
+  (3); collecting one adds a permanent slow stack (`snap.spore_stacks`); `tick_dt` folds
+  it in as `rate *= pow(1 - SPORE_SLOW_PER_STACK, spore_stacks)`.
 
 ## Procedural floors
 
 `FloorGenerator.generate(depth, snap)` returns a `Floor` (grid + obstacles + spawn +
-`essenceNeeded` + `clusters`). Difficulty scales with depth (tick rate, wall density,
-slime/obstacle counts). **Nutrient Storage** lowers `essenceNeeded` (min 1); **Tri-
-Directional Fork** lays essence as 3-adjacent-hex clusters (`Floor.clusters` maps each
-member to its siblings so eating one clears the rest — 1 cluster = 1 toward the portal).
-**BFS connectivity is guaranteed**: every wall placement is checked — if it would
-disconnect any passable cell from spawn, it is rejected. The portal (and Chamber Core)
-are placed at the **farthest reachable cell** from the relevant origin (snake head for
-the portal). Chamber Core is hidden beyond `max(4, snap.radarRadius)` hexes.
+`essence_needed` + `clusters`). Difficulty scales with depth (tick rate, wall density,
+slime/obstacle counts). **Nutrient Storage** lowers `essence_needed` (min 1); **Tri-
+Directional Fork** lays essence as 3-adjacent-hex clusters. **BFS connectivity is
+guaranteed**: every wall placement is checked — if it would disconnect any passable cell
+from spawn, it is rejected. The portal is placed at the farthest reachable cell from the
+snake head; the Chamber Core at the farthest from spawn.
+
+**Pickup placement (essence / spore / chamber core):** each requires **≥2 free adjacent
+hexes** AND **≥2 vertex-disjoint routes to spawn** (`FloorGenerator._has_two_routes` —
+find one path, block its interior, confirm a second reaches the cell). This guarantees a
+pickup is never on a dead-end branch that would trap the snake against its own body after
+grabbing. `floor_test.gd` asserts this.
 
 ## Tuning
 
-All gameplay constants and the orange/teal palette live in `src/config.ts`; per-upgrade
-runtime values default in `src/upgrades/snapshot.ts`; mutation definitions are data-driven
-in `src/upgrades/registry.ts` (add new ones there — no other code needs to change for
-pure-snapshot effects).
+All gameplay constants live in `godot/autoload/config.gd`; per-upgrade runtime values
+default in `godot/upgrades/game_snapshot.gd`; card definitions are data-driven in
+`godot/upgrades/registry.gd`. The 4 palette themes + audio/display/keybind settings
+persist via `godot/autoload/settings.gd` (`user://settings.cfg`).

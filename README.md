@@ -1,50 +1,54 @@
 # HexSnake
 
-Snake on a **hexagonal grid** with **roguelike progression** — eat essence, descend
-through procedurally generated depths, and mutate your snake into a build. Vanilla
-TypeScript + HTML5 Canvas, bundled with Vite. Permadeath. Orange & teal retro-modern.
+Snake on a **hexagonal grid** with **roguelike progression** — eat essence, open the
+portal, descend through procedurally generated depths, and mutate your snake into a
+build. Permadeath. Built with **Godot 4.7 / GDScript** (hand-drawn on a Node2D canvas —
+no game framework, no Control-node UI).
 
-## Quick start
+The game lives entirely in [`godot/`](godot). (An earlier TypeScript + Canvas + Vite +
+Tauri version was ported over and has been retired.)
 
-```bash
-npm install
-npm run dev
-```
+## Run
 
-Vite opens the game in your browser (default http://localhost:5173). That's it.
-
-Other scripts:
+Open `godot/project.godot` in the **Godot 4.7** editor and press ▶, or from a console:
 
 ```bash
-npm run build     # typecheck (tsc --noEmit) then bundle to dist/
-npm run preview   # serve the production build
-npm run typecheck # tsc --noEmit only
+godot --path godot                       # windowed run (the game)
 ```
 
-## Desktop build (Windows `.exe`)
+## Headless tests
 
-The browser game is also wrapped as a native Windows desktop app via [Tauri 2](https://tauri.app)
-— a small Rust shell around the Vite build. **No game logic is duplicated**; the web and
-desktop builds share identical code.
+The port ships 8 `-s` SceneTree test suites under [`godot/core/`](godot/core) — run them
+after any change:
 
 ```bash
-npm run tauri build   # build the Windows app (needs Rust + MSVC Build Tools installed)
+godot --headless --path godot --import                      # compile + register autoloads
+godot --headless --path godot -s res://core/parity_test.gd  # run one suite
 ```
 
-This produces, under `src-tauri/target/release/`:
+Suites: `hex_test`, `play_test`, `floor_test`, `upgrade_test`, `draft_test`,
+`touch_test`, `parity_test`, `keybind_test`. `parity_test` is the rules gate (death
+reasons, every card-resolved survival, lives counting, collision order); `floor_test`
+guards the BFS-connectivity + 2-routes-to-spawn pickup-placement invariants.
 
-- `app.exe` — standalone executable (just run it)
-- `bundle/nsis/HexSnake_<version>_x64-setup.exe` — installer (auto-fetches WebView2 if absent)
+## Build / export
 
-`npm run tauri dev` opens the game in a desktop window over the Vite dev server for live
-iteration. **One-time prerequisites:** the [Rust toolchain](https://rustup.rs) and the MSVC
-C++ Build Tools ("Desktop development with C++" workload). Open a new terminal after
-installing Rust so `cargo` is on PATH.
+Export presets live in [`godot/export_presets.cfg`](godot/export_presets.cfg). Building
+needs the **export templates** installed (editor → Manage Export Templates → Download),
+then:
+
+```bash
+godot --headless --path godot --export-release "Windows Desktop"   # -> godot/build/HexSnake.exe
+```
+
+Add macOS / Linux / Android / iOS / Web presets from the editor's Export dialog (each
+target needs its native toolchain). Settings (audio, theme, difficulty, keybinds, video)
+persist to `user://settings.cfg`.
 
 ## Controls
 
-The flat-top hex grid mirrors the keyboard: the **top row** keys steer into the
-three upper hexes, the **bottom row** into the three lower hexes.
+The flat-top hex grid mirrors the keyboard: the top row steers into the three upper
+hexes, the bottom row into the three lower hexes (rebindable in Settings → Keybinds).
 
 ```
    Q  W  E      NW  N  NE
@@ -54,99 +58,58 @@ three upper hexes, the **bottom row** into the three lower hexes.
    A  S  D      SW  S  SE
 ```
 
-| Key        | Direction |
-| ---------- | --------- |
-| `W`        | N (up)    |
-| `E`        | NE        |
-| `D`        | SE        |
-| `S`        | S (down)  |
-| `A`        | SW        |
-| `Q`        | NW        |
-
-- **Numpad** mirror also works: `7 8 9` / `1 2 3` (plus `4`/`6`).
-- `Space` — **Phase Shifter** (if you have it): pass through your own body for 3s.
-- `Enter` — start / restart. `1` `2` `3` or **click** — pick a mutation. `P` — pause.
-
-You can't reverse 180° into your own neck (it's ignored).
+`Space` — Phase Shifter · `Shift` — Diagonal Slip · `P` — pause · `Enter` — select/start ·
+`Esc` — back. On touch devices an on-screen hex pad appears. You can't reverse 180° into
+your own neck.
 
 ## How it plays
 
-- **Eat essence** (teal pellets). Fill the **ESSENCE x/y** bar to open the **portal**
-  (amber swirl), then reach it to descend a depth.
-- Each depth is **procedurally generated** with walls (gray), toxic **slime** (amber,
-  damages you), and from depth 3+, roaming **moving obstacles** (orange).
-- A rare **Chamber Core** (gold) may spawn far from you — grabbing it grants a bonus
-  mutation mid-floor. **Split Tongue** reveals it from further away.
-- **Clear a depth** (or eat a Chamber Core) → pick **1 of 3 mutations**. Stack them
-  into a build.
-- Crash into a wall/obstacle/your own tail, or burn out on slime → **permadeath** and a
-  run summary (depth, score, build).
+- **Eat essence** (blue pellets) to fill the bar and open the **portal** (amber swirl);
+  reach it to descend a depth.
+- Each depth is **procedurally generated** with walls, toxic **slime** (damages you), and
+  from depth 3+, roaming **moving obstacles**. A rare **Chamber Core** (gold, hidden until
+  you're within sense range) grants a bonus mutation mid-floor.
+- **Clear a depth** (or eat a Chamber Core) → pick **1 of 3 mutations** and stack them.
+- You have **lives** (default 3, max 5): a death revives you on the same floor until your
+  last life — then it's **permadeath** and a run summary.
 
-### Mutations
+### Mutations (14 cards, 4 rarities)
 
-| Mutation | Effect |
-| -------- | ------ |
-| **Thick Scales** | +1 max health (tanks slime) + soak one wall hit per floor. |
-| **Acidic Trail** | Leave a lingering acid wake — roaming hazards that cross it dissolve. |
-| **Phase Shifter** | `Space` to phase through your own body for 3s (9s cooldown). |
-| **Split Tongue** | +3 sense radius — reveals Chamber Cores from afar. |
-| **Growth Hormone** | +2 length per essence and +0.25× score (cap 5×). |
-| **Greedy Metabolism** | +0.4× score multiplier (cap 5×), no extra growth. |
+| Rarity | Card | Effect |
+| ------ | ---- | ------ |
+| Common | **Elongated Strike** | +25% essence score (snake moves 5% faster). |
+| Common | **Chitinous Shell** | +1 armor charge (max 2); striking a wall soaks the hit + shatters it. |
+| Common | **Nutrient Storage** | −2 essence needed per portal. |
+| Common | **Auxiliary Heart** | +1 life (max 5). |
+| Rare | **Tri-Directional Fork** | Essence spawns in 3-adjacent clusters. |
+| Rare | **Shedding Season** | Shed a tail segment every 15 hexes. |
+| Rare | **Diagonal Slip** | `Shift` — skim along a wall instead of crashing. |
+| Epic | **Phase Shifter** | `Space` — phase through your own body. |
+| Epic | **Acidic Trail** | Leave an acid wake that dissolves roaming hazards. |
+| Epic | **Hypertrophy** | +200% score, but +2 length per essence. |
+| Epic | **Regenerative Bloom** | +2 lives. |
+| Legendary | **Ouroboros Loop** | Encircle hazards + bite your tail to vaporize them and survive. |
+| Legendary | **Hydra's Venom** | One-time: crash into an obstacle severs you in two, new head moves outward. |
+| Legendary | **Apex Predator** | Biting your tail devours it (you survive) + resets your score multiplier. |
 
-## Architecture
+## Structure
 
 ```
-src/
-  main.ts              bootstrap (canvas + Game)
-  config.ts            tunables (CONFIG) + palette (PALETTE)
-  game/
-    Game.ts            GameManager: fixed-timestep loop, FSM, run stats, transitions
-    GameState.ts       State enum
-    types.ts           Hex, Direction, Occupant, StepResult, RunSummary
-  grid/
-    hex.ts             pure flat-top axial math (DIRS, neighbor, pixel conv, bounds)
-    GridManager.ts     playfield occupancy
-  snake/
-    SnakeController.ts segments, movement, ordered collision, upgrade hooks
-  floor/
-    FloorGenerator.ts  procedural walls/slime/essence/core + BFS connectivity + portal
-    hazards.ts         moving-obstacle roaming
-  upgrades/
-    snapshot.ts        GameSnapshot — the single upgrade seam (config struct)
-    registry.ts        data-driven MutationDef list
-    UpgradeSystem.ts   roll-3, apply, stacking, active list
-  input/Input.ts       key→direction map, queue, no-reverse filter
-  render/
-    Renderer.ts        world draw (interpolated snake, grid, entities)
-    HexPainter.ts      flat-top hex primitives
-  ui/
-    Hud.ts             in-game HUD
-    Overlays.ts        menu / upgrade-select / death screens
+godot/
+  autoload/   Config, Palette (4 themes), AudioManager, Settings (persistence)
+  core/       pure hex math, enums, + the 8 headless test suites
+  floor/      FloorGenerator (BFS-connected, 2-routes pickups), Hazards (roaming obstacles)
+  game/       GameManager (loop + FSM), SnakeController, Floor, StepResult, RunSummary
+  grid/       GridManager
+  input/      InputQueue, InputRouter (Settings-driven keybinds)
+  render/     World (all hand-drawn _draw: grid, snake, pickups, HUD, menus, overlays)
+  settings/   Keybinds (conflict / reserved-key logic)
+  upgrades/   GameSnapshot (the tunable seam), UpgradeSystem (weighted draft), Registry (14 cards)
+  ui/         TouchControls, PointerHandler (mouse+touch), MenuController + UiContext + widgets + screens
+  assets/     audio (music + SFX), icon
 ```
 
-Key design notes (see also `CLAUDE.md`):
-
-- **Hex math is pure** in `grid/hex.ts` — no state, no canvas.
-- **`GameSnapshot`** is the single struct mutated by upgrades and read each tick; no
-  scattered `if (hasUpgrade)` checks.
-- **Fixed-timestep tick + render interpolation**: the snake advances 1 hex per tick and
-  glides smoothly at 60fps.
-- **BFS connectivity guarantee**: every floor is solvable — walls that would disconnect
-  the playfield are rejected at generation time.
-
-### Smoke test
-
-A headless browser smoke test (uses `puppeteer-core` + your system Chrome) boots the
-dev server, starts a run, steers, and verifies a wall death transitions cleanly with
-zero console/page errors:
-
-```bash
-npm run dev          # in one terminal
-node scripts/smoke.mjs   # in another
-```
-
-## Tuning
-
-All gameplay constants (grid radius, tick rate, hazard densities, essence counts,
-upgrade values) and the color palette live in `src/config.ts` and
-`src/upgrades/snapshot.ts`. Add new mutations in `src/upgrades/registry.ts`.
+Key design notes (see `CLAUDE.md` for full invariants): hex math is pure in
+`core/hex.gd`; **`GameSnapshot`** is the single struct mutated by upgrades (no scattered
+`if has_upgrade` checks); the snake advances 1 hex per fixed tick with render
+interpolation; every floor is BFS-solvable and every pickup has ≥2 routes to spawn.

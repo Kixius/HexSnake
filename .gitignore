@@ -1,7 +1,9 @@
-node_modules/
-dist/
+# Godot editor cache + import artifacts (regenerated on open/import)
+godot/.godot/
+
+# Godot export output
+godot/build/
+
+# OS / editor cruft
 *.log
 .DS_Store
-
-# test artifacts
-scripts/*.png
